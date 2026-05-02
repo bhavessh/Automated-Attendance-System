@@ -191,7 +191,7 @@ The system automatically exports attendance data for Power BI visualization:
 ## 🤝 Support
 
 For technical support or questions:
-- Email: support@attendance-system.com
+- Email: jbhavesh.in@gmail.com
 - Documentation: [docs/](docs/)
 - Issues: Create a GitHub issue
 
