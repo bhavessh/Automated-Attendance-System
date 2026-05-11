@@ -18,6 +18,7 @@ import AdminAddTeacher from './pages/Admin/AdminAddTeacher';
 // Services
 import { authService } from './services/authService';
 import './App.css';
+import './mintlify-theme.css';
 
 // Create Material-UI theme
 const theme = createTheme({
@@ -51,19 +52,24 @@ const theme = createTheme({
   },
 });
 
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [themeMode, setThemeMode] = useState('light');
 
   useEffect(() => {
     checkAuthStatus();
   }, []);
 
+  useEffect(() => {
+    document.body.setAttribute('data-theme', themeMode);
+  }, [themeMode]);
+
   const checkAuthStatus = () => {
     const token = authService.getToken();
     const user = authService.getCurrentUser();
-    
     if (token && user) {
       setIsAuthenticated(true);
       setCurrentUser(user);
@@ -82,6 +88,10 @@ function App() {
     setCurrentUser(null);
   };
 
+  const toggleTheme = () => {
+    setThemeMode((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
   if (isLoading) {
     return (
       <div className="loading-container">
@@ -96,6 +106,7 @@ function App() {
       <CssBaseline />
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <div className="App">
+          {/* Theme toggle removed per UX preference */}
           {isAuthenticated ? (
             <>
               <Navigation currentUser={currentUser} onLogout={handleLogout} />

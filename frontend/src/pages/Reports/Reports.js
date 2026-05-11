@@ -83,44 +83,44 @@ function Reports() {
         </Typography>
       </div>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                label="Start Date"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                label="End Date"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} md={6} sx={{ display: 'flex', gap: 2, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
-              <Button variant="outlined" onClick={loadReports} disabled={loading}>
-                Refresh
-              </Button>
-              <Button variant="contained" startIcon={<Download />} onClick={() => handleExport('excel')} disabled={loading}>
-                Export Excel
-              </Button>
-              <Button variant="outlined" startIcon={<Download />} onClick={() => handleExport('pdf')} disabled={loading}>
-                Export PDF
-              </Button>
-            </Grid>
+      <div className="card" style={{ marginBottom: 32 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={16} md={3}>
+            <TextField
+              fullWidth
+              label="Start Date"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="input"
+            />
           </Grid>
-          {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-        </CardContent>
-      </Card>
+          <Grid item xs={12} md={3}>
+            <TextField
+              fullWidth
+              label="End Date"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="input"
+            />
+          </Grid>
+          <Grid item xs={12} md={6} sx={{ display: 'flex', gap: 2, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+            <button className="button-secondary" onClick={loadReports} disabled={loading} style={{ marginRight: 8 }}>
+              Refresh
+            </button>
+            <button className="button-primary" onClick={() => handleExport('excel')} disabled={loading} style={{ marginRight: 8 }}>
+              <Download style={{ verticalAlign: 'middle', marginRight: 8 }} /> Export Excel
+            </button>
+            <button className="button-secondary" onClick={() => handleExport('pdf')} disabled={loading}>
+              <Download style={{ verticalAlign: 'middle', marginRight: 8 }} /> Export PDF
+            </button>
+          </Grid>
+        </Grid>
+        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+      </div>
 
 
       <Card sx={{ mt: 3 }}>

@@ -1,16 +1,8 @@
-import {
-    Add as AddIcon,
-    Delete as DeleteIcon,
-    Edit as EditIcon,
-    Person as PersonIcon,
-    School as SchoolIcon,
-    Search as SearchIcon
-} from '@mui/icons-material';
+import React, { useState, useEffect, useCallback } from 'react';
+
 import {
     Box,
     Button,
-    Card,
-    CardContent,
     Chip,
     CircularProgress,
     Container,
@@ -19,33 +11,34 @@ import {
     DialogContent,
     DialogTitle,
     FormControl,
-    Grid,
-    IconButton,
-    InputAdornment,
     InputLabel,
-    MenuItem,
-    Paper,
     Select,
+    Typography,
+    Grid,
+    TextField,
+    IconButton,
+    Paper,
     Table,
     TableBody,
     TableCell,
     TableContainer,
     TableHead,
     TableRow,
-    TextField,
-    Typography
+    MenuItem
 } from '@mui/material';
-import { useCallback, useEffect, useState } from 'react';
+
 import { toast } from 'react-toastify';
 import CameraCapture from '../../components/CameraCapture/CameraCapture';
+import InputAdornment from '@mui/material/InputAdornment';
+
+import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Person as PersonIcon, School as SchoolIcon, Search as SearchIcon } from '@mui/icons-material';
+
 import { studentService } from '../../services/studentService';
 import { apiService } from '../../services/apiService';
 
-function Students() {
+const Students = () => {
   const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [editingStudent, setEditingStudent] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,6 +61,8 @@ function Students() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [availableClasses, setAvailableClasses] = useState([]);
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [openDialog, setOpenDialog] = useState(false);
 
   const fetchStudents = useCallback(async () => {
     setLoading(true);
@@ -320,71 +315,72 @@ function Students() {
       </div>
 
       {/* Controls */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                placeholder="Search students..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl fullWidth>
-                <InputLabel>Class</InputLabel>
-                <Select
-                  value={classFilter}
-                  onChange={(e) => setClassFilter(e.target.value)}
-                  label="Class"
-                >
-                  <MenuItem value="">All Classes</MenuItem>
-                  {getUniqueClasses().map((cls) => (
-                    <MenuItem key={cls} value={cls}>{cls}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl fullWidth>
-                <InputLabel>Section</InputLabel>
-                <Select
-                  value={sectionFilter}
-                  onChange={(e) => setSectionFilter(e.target.value)}
-                  label="Section"
-                >
-                  <MenuItem value="">All Sections</MenuItem>
-                  {getUniqueSections().map((section) => (
-                    <MenuItem key={section} value={section}>{section}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={4} sx={{ textAlign: 'right' }}>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => handleOpenDialog()}
-                size="large"
-              >
-                Add Student
-              </Button>
-            </Grid>
+      <div className="card" style={{ marginBottom: 32 }}>
+        <Grid container spacing={3} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              placeholder="Search students..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+                className: 'input'
+              }}
+            />
           </Grid>
-        </CardContent>
-      </Card>
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth>
+              <InputLabel>Class</InputLabel>
+              <Select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                label="Class"
+                className="input"
+              >
+                <MenuItem value="">All Classes</MenuItem>
+                {getUniqueClasses().map((cls) => (
+                  <MenuItem key={cls} value={cls}>{cls}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth>
+              <InputLabel>Section</InputLabel>
+              <Select
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+                label="Section"
+                className="input"
+              >
+                <MenuItem value="">All Sections</MenuItem>
+                {getUniqueSections().map((section) => (
+                  <MenuItem key={section} value={section}>{section}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={4} sx={{ textAlign: 'right' }}>
+            <button
+              className="button-primary"
+              style={{ minWidth: 140 }}
+              onClick={() => handleOpenDialog()}
+            >
+              <AddIcon style={{ verticalAlign: 'middle', marginRight: 8 }} /> Add Student
+            </button>
+          </Grid>
+        </Grid>
+      </div>
 
       {/* Students Table */}
-      <Card>
-        <CardContent>
+      {/* Students Table */}
+      <>
+        <div className="card" style={{ borderRadius: 28, overflow: 'hidden' }}>
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
               <CircularProgress />
@@ -401,16 +397,16 @@ function Students() {
                   : 'Get started by adding your first student'
                 }
               </Typography>
-              <Button 
-                variant="contained" 
-                startIcon={<AddIcon />}
+              <button 
+                className="button-primary"
+                style={{ minWidth: 140 }}
                 onClick={() => handleOpenDialog()}
               >
-                Add Student
-              </Button>
+                <AddIcon style={{ verticalAlign: 'middle', marginRight: 8 }} /> Add Student
+              </button>
             </Box>
           ) : (
-            <TableContainer component={Paper} elevation={0}>
+            <TableContainer component={Paper} elevation={0} >
               <Table>
                 <TableHead>
                   <TableRow>
@@ -475,8 +471,8 @@ function Students() {
               </Table>
             </TableContainer>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </>
 
       {/* Add/Edit Student Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>

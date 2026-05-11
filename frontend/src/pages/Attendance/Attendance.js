@@ -358,7 +358,7 @@ function Attendance() {
         </Typography>
       </div>
 
-      <Card>
+      <div className="card">
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
             <Tab label="Mark Attendance" />
@@ -372,63 +372,55 @@ function Attendance() {
           <Grid container spacing={4}>
             {/* Face Recognition Section */}
             <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent sx={{ textAlign: 'center', p: 4 }}>
-                  <CameraAltIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-                  <Typography variant="h6" gutterBottom>
-                    Camera Face Recognition
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Open camera and press SPACEBAR to capture and recognize faces
-                  </Typography>
-                  
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<CameraAltIcon />}
-                    onClick={() => {
-                      console.log('Camera button clicked, opening dialog...');
-                      setShowCamera(true);
-                    }}
-                    disabled={recognizing}
-                    sx={{ mb: 2 }}
-                  >
-                    Open Camera for Attendance
-                  </Button>
-
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    OR
-                  </Typography>
-                  
-                  <input
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    id="face-recognition-upload"
-                    type="file"
-                    onChange={handleFaceRecognitionUpload}
-                  />
-                  <label htmlFor="face-recognition-upload">
-                    <Button
-                      variant="outlined"
-                      component="span"
-                      size="large"
-                      startIcon={<CameraAltIcon />}
+              {/* Camera Face Recognition Card */}
+              <>
+                <div className="card" style={{ height: '100%' }}>
+                  <div style={{ textAlign: 'center', padding: 32 }}>
+                    <CameraAltIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom>
+                      Camera Face Recognition
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Open camera and press SPACEBAR to capture and recognize faces
+                    </Typography>
+                    <button
+                      className="button-primary"
+                      style={{ marginBottom: 16, minWidth: 220 }}
+                      onClick={() => setShowCamera(true)}
                       disabled={recognizing}
                     >
-                      Upload Photo
-                    </Button>
-                  </label>
-                  
-                  {recognizing && (
-                    <Box sx={{ mt: 2 }}>
-                      <CircularProgress size={24} />
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        Processing facial recognition...
-                      </Typography>
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
+                      <CameraAltIcon style={{ verticalAlign: 'middle', marginRight: 8 }} /> Open Camera for Attendance
+                    </button>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      OR
+                    </Typography>
+                    <input
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      id="face-recognition-upload"
+                      type="file"
+                      onChange={handleFaceRecognitionUpload}
+                    />
+                    <label htmlFor="face-recognition-upload">
+                      <button
+                        className="button-secondary"
+                        style={{ minWidth: 180 }}
+                        disabled={recognizing}
+                      >
+                        <CameraAltIcon style={{ verticalAlign: 'middle', marginRight: 8 }} /> Upload Photo
+                      </button>
+                    </label>
+                    {recognizing && (
+                      <Box sx={{ mt: 2 }}>
+                        <CircularProgress size={24} />
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                          Processing facial recognition...
+                        </Typography>
+                      </Box>
+                    )}
+                  </div>
+                </div>
+              </>
             </Grid>
 
             {/* Manual Attendance Section */}
@@ -787,7 +779,7 @@ function Attendance() {
             </Table>
           </TableContainer>
         </TabPanel>
-      </Card>
+      </div>
 
       {/* Mark Attendance Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>

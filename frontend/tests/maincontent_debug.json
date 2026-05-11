@@ -1,0 +1,89 @@
+{
+  "rect": {
+    "x": 280,
+    "y": 720,
+    "width": 1000,
+    "height": 640,
+    "top": 720,
+    "right": 1280,
+    "bottom": 1360,
+    "left": 280
+  },
+  "style": {
+    "display": "block",
+    "visibility": "visible",
+    "opacity": "1",
+    "color": "rgba(0, 0, 0, 0.87)",
+    "background": "rgb(245, 245, 245)"
+  },
+  "parents": [
+    {
+      "tag": "DIV",
+      "cls": "App",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 1360,
+        "top": 0,
+        "right": 1280,
+        "bottom": 1360,
+        "left": 0
+      },
+      "position": "static",
+      "transform": "none",
+      "marginTop": "0px"
+    },
+    {
+      "tag": "DIV",
+      "cls": "",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 1360,
+        "top": 0,
+        "right": 1280,
+        "bottom": 1360,
+        "left": 0
+      },
+      "position": "static",
+      "transform": "none",
+      "marginTop": "0px"
+    },
+    {
+      "tag": "BODY",
+      "cls": "",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 1360,
+        "top": 0,
+        "right": 1280,
+        "bottom": 1360,
+        "left": 0
+      },
+      "position": "static",
+      "transform": "none",
+      "marginTop": "0px"
+    },
+    {
+      "tag": "HTML",
+      "cls": "",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 720,
+        "top": 0,
+        "right": 1280,
+        "bottom": 720,
+        "left": 0
+      },
+      "position": "static",
+      "transform": "none",
+      "marginTop": "0px"
+    }
+  ]
+}

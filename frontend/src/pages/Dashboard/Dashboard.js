@@ -157,73 +157,70 @@ function Dashboard() {
         </Typography>
       </div>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Class</InputLabel>
-                <Select
-                  value={classFilter}
-                  label="Class"
-                  onChange={(e) => {
-                    setClassFilter(e.target.value);
-                    // Reset section if it no longer applies
-                    if (e.target.value === '' || !availableSections.includes(sectionFilter)) {
-                      setSectionFilter('');
-                    }
-                  }}
-                >
-                  <MenuItem value="">All Classes</MenuItem>
-                  {availableClasses.map((c) => (
-                    <MenuItem key={c} value={c}>{c}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Section</InputLabel>
-                <Select
-                  value={sectionFilter}
-                  label="Section"
-                  onChange={(e) => setSectionFilter(e.target.value)}
-                >
-                  <MenuItem value="">All Sections</MenuItem>
-                  {availableSections.map((s) => (
-                    <MenuItem key={s} value={s}>{s}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+      <div className="card" style={{ marginBottom: 32 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth>
+              <InputLabel>Class</InputLabel>
+              <Select
+                value={classFilter}
+                label="Class"
+                onChange={(e) => {
+                  setClassFilter(e.target.value);
+                  if (e.target.value === '' || !availableSections.includes(sectionFilter)) {
+                    setSectionFilter('');
+                  }
+                }}
+                className="input"
+              >
+                <MenuItem value="">All Classes</MenuItem>
+                {availableClasses.map((c) => (
+                  <MenuItem key={c} value={c}>{c}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
-        </CardContent>
-      </Card>
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth>
+              <InputLabel>Section</InputLabel>
+              <Select
+                value={sectionFilter}
+                label="Section"
+                onChange={(e) => setSectionFilter(e.target.value)}
+                className="input"
+              >
+                <MenuItem value="">All Sections</MenuItem>
+                {availableSections.map((s) => (
+                  <MenuItem key={s} value={s}>{s}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+      </div>
 
       {/* Attendance Trend Chart */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Attendance Trend
-          </Typography>
-          {stats?.trend && stats.trend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={stats.trend} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="present" stroke="#4caf50" name="Present" />
-                <Line type="monotone" dataKey="absent" stroke="#f44336" name="Absent" />
-                <Line type="monotone" dataKey="late" stroke="#ff9800" name="Late" />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <Typography variant="body2" color="textSecondary">No trend data available.</Typography>
-          )}
-        </CardContent>
-      </Card>
+      <div className="card" style={{ marginBottom: 40 }}>
+        <Typography variant="h6" gutterBottom>
+          Attendance Trend
+        </Typography>
+        {stats?.trend && stats.trend.length > 0 ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={stats.trend} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="present" stroke="#4caf50" name="Present" />
+              <Line type="monotone" dataKey="absent" stroke="#f44336" name="Absent" />
+              <Line type="monotone" dataKey="late" stroke="#ff9800" name="Late" />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <Typography variant="body2" color="textSecondary">No trend data available.</Typography>
+        )}
+      </div>
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statCards.map((card, index) => {
           const Icon = card.icon;
