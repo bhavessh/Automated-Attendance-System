@@ -91,7 +91,7 @@ The Automated Attendance System leverages modern facial recognition technology t
    # backend/.env
    SECRET_KEY=change-me
    JWT_SECRET_KEY=change-me-too
-   DATABASE_URL=sqlite:///instance/attendance_system.db
+   DATABASE_URL=
    ```
 
    Initialize the database:
