@@ -1,0 +1,45 @@
+# Lightweight Dockerfile for Render builds
+# This removes problematic/obsolete apt packages and installs a minimal set
+FROM python:3.9-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install minimal system deps required by the app; avoid obsolete mesa packages
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libgl1 \
+    libxrender1 \
+    libgomp1 \
+    libgstreamer1.0-0 \
+    cmake \
+    build-essential \
+    libpq-dev \
+    curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copy requirements & install Python deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Create necessary directories and set ownership
+RUN mkdir -p uploads/faces logs config && chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 5000
+
+# Use gunicorn to run production server (Render will set PORT env)
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:app"]

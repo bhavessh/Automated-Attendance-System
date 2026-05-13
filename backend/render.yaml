@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: attendance-backend
+    env: docker
+    repo: https://github.com/bhavessh/Automated-Attendance-System
+    branch: main
+    buildCommand: ""
+    startCommand: ""
+    plan: free
+    envVars:
+      - key: MONGODB_URI
+        value: ''
+      - key: JWT_SECRET_KEY
+        value: ''
+      - key: FLASK_ENV
+        value: production

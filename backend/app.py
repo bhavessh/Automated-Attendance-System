@@ -1685,4 +1685,9 @@ if __name__ == '__main__':
     with app.app_context():
         if db is not None:
             db.create_all()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Use environment-provided PORT (Render/Fly provide this) and FLASK_ENV
+    port = int(os.environ.get('PORT', os.environ.get('FLASK_RUN_PORT', 5000)))
+    flask_env = os.environ.get('FLASK_ENV', os.environ.get('ENV', 'production'))
+    debug_mode = False if str(flask_env).lower() == 'production' else True
+    print(f"Starting Flask app on port={port} FLASK_ENV={flask_env} debug={debug_mode}")
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
