@@ -1,0 +1,19 @@
+node:internal/process/promises:289
+            triggerUncaughtException(err, true /* fromPromise */);
+            ^
+
+browserType.launch: Executable doesn't exist at C:\Users\HP\AppData\Local\ms-playwright\chromium-1091\chrome-win\chrome.exe
+╔═════════════════════════════════════════════════════════════════════════╗
+║ Looks like Playwright Test or Playwright was just installed or updated. ║
+║ Please run the following command to download new browsers:              ║
+║                                                                         ║
+║     npx playwright install                                              ║
+║                                                                         ║
+║ <3 Playwright Team                                                      ║
+╚═════════════════════════════════════════════════════════════════════════╝
+    at d:\CODE\CM\Automated-Attendance-System-main\Automated-Attendance-System-main\frontend\tests\smoke.js:4:34
+    at Object.<anonymous> (d:\CODE\CM\Automated-Attendance-System-main\Automated-Attendance-System-main\frontend\tests\smoke.js:75:3) {
+  name: 'Error'
+}
+
+Node.js v20.12.2

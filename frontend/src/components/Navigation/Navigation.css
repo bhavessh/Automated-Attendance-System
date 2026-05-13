@@ -1,0 +1,58 @@
+.active-nav-item {
+  background: linear-gradient(90deg, rgb(99,102,209), rgb(140,113,199));
+  border-right: 3px solid rgba(0,0,0,0.08) !important;
+  box-shadow: 0 6px 18px rgba(99,102,209,0.08);
+}
+
+.nav-drawer {
+  /* Keep the drawer fixed to the left under the AppBar so it doesn't push content down */
+  position: fixed;
+  top: 64px; /* matches AppBar height */
+  left: 0;
+  height: calc(100vh - 64px);
+  border-right: 1px solid #e0e0e0;
+  z-index: 1200;
+}
+
+.nav-drawer.MuiDrawer-root { transition: width 220ms ease; }
+.nav-drawer[style*="width: 72px"] .MuiListItemText-root { display: none; }
+
+/* When hovered (temporary expanded), show text - handled by inline width + transition; keep a class fallback */
+.nav-drawer:hover .MuiListItemText-root { display: block !important; }
+
+.nav-item {
+  transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.nav-item:hover {
+  background-color: rgba(99,102,209,0.06);
+  transform: translateY(-2px);
+}
+
+/* Avatar button animation */
+.avatar-btn { transition: transform 200ms ease, box-shadow 200ms ease; }
+.avatar-open { transform: rotate(8deg) scale(1.02); box-shadow: 0 6px 18px rgba(99,102,209,0.12); }
+
+/* Drawer hover hint (subtle expand on hover) */
+.nav-drawer { transition: width 220ms ease; }
+.nav-drawer:hover { box-shadow: 4px 0 24px rgba(0,0,0,0.06); }
+
+/* User card at bottom interactions */
+.nav-drawer .card { transition: transform 160ms ease, box-shadow 160ms ease; cursor: pointer; }
+.nav-drawer .card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(99,102,209,0.08); }
+
+/* Accessible focus style for keyboard navigation */
+.nav-item:focus, .active-nav-item:focus { box-shadow: 0 0 0 4px rgba(99,102,209,0.08); outline: none; }
+
+.user-info-section {
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+@media (max-width: 768px) {
+  .nav-drawer {
+    position: fixed;
+    top: 64px;
+    height: calc(100vh - 64px);
+    z-index: 1300;
+  }
+}

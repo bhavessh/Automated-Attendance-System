@@ -1,0 +1,97 @@
+{
+  "center": {
+    "x": 640,
+    "y": 360
+  },
+  "elemsAtCenter": [
+    {
+      "tag": "DIV",
+      "id": null,
+      "class": "App",
+      "zIndex": "auto",
+      "pointerEvents": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "opacity": "1",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 1360
+      }
+    },
+    {
+      "tag": "DIV",
+      "id": "root",
+      "class": null,
+      "zIndex": "auto",
+      "pointerEvents": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "opacity": "1",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 1360
+      }
+    },
+    {
+      "tag": "BODY",
+      "id": null,
+      "class": null,
+      "zIndex": "auto",
+      "pointerEvents": "auto",
+      "background": "rgb(245, 245, 245)",
+      "opacity": "1",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 1360
+      }
+    },
+    {
+      "tag": "HTML",
+      "id": null,
+      "class": null,
+      "zIndex": "auto",
+      "pointerEvents": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "opacity": "1",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 720
+      }
+    }
+  ],
+  "candidates": [
+    {
+      "tag": "HEADER",
+      "cls": "MuiPaper-root MuiPaper-elevation MuiPaper-elevation0 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionFixed mui-fixed css-1xxf46t-MuiPaper-root-MuiAppBar-root",
+      "z": 1201,
+      "pointerEvents": "auto",
+      "bg": "rgba(0, 0, 0, 0)",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 64
+      }
+    },
+    {
+      "tag": "DIV",
+      "cls": "MuiPaper-root MuiPaper-elevation MuiPaper-elevation0 MuiDrawer-paper MuiDrawer-paperAnchorLeft MuiDrawer-paperAnchorDockedLeft css-12i7wg6-MuiPaper-root-MuiDrawer-paper",
+      "z": 1200,
+      "pointerEvents": "auto",
+      "bg": "rgba(0, 0, 0, 0)",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 280,
+        "height": 720
+      }
+    }
+  ],
+  "backdrops": []
+}

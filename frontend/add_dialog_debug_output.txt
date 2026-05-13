@@ -1,0 +1,10 @@
+ADD_DIALOG_DEBUG: start
+ADD_DIALOG_DEBUG: button found true
+ADD_DIALOG_DEBUG: clicked add button
+ADD_DIALOG_DEBUG: dialog count 1
+DIALOG[0] text snippet: Add New Student Student Photo for Face Recognition UPLOAD PHOTO CAPTURE WITH CAMERA Upload or capture a clear photo for 
+DIALOG[0] visible: true
+DIALOG[0] bbox: { x: 190, y: 32, width: 900, height: 656 }
+ADD_DIALOG_DEBUG: portal found true
+ADD_DIALOG_DEBUG: portal snippet Add New Student Student Photo for Face Recognition UPLOAD PHOTO CAPTURE WITH CAMERA Upload or capture a clear photo for facial recognition. JPG, PNG up to 5MB. Roll Number * * Roll Number * * Admissio
+ADD_DIALOG_DEBUG: done

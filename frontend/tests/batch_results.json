@@ -1,0 +1,92 @@
+[
+  {
+    "route": "/dashboard",
+    "url": "http://localhost:3001/dashboard",
+    "screenshot": "dashboard.png",
+    "info": {
+      "textSnippet": "Dashboard Welcome to the Automated Attendance System Class ​ Class Section ​ Section Attendance Trend 05-03 05-04 05-05 05-06 05-07 05-08 05-09 0 0.25 0.5 0.75 1 PresentAbsentLate 2 Total Students 1 Present Today 50% Attendance Rate 1 Alerts Quick Actions Use the navigation menu to access different features: Students Manage student records and register faces Attendance Mark attendance using facial recognition Reports View attendance reports and analytics Settings Configure system settings (Admin only) System Status Face Recognition: Active Database: Connected Sync Status: Offline Mode",
+      "width": 1000,
+      "height": 1397.078125,
+      "display": "block",
+      "visibility": "visible",
+      "opacity": "1",
+      "color": "rgba(0, 0, 0, 0.87)",
+      "background": "rgb(245, 245, 245)"
+    }
+  },
+  {
+    "route": "/students",
+    "url": "http://localhost:3001/students",
+    "screenshot": "students.png",
+    "info": {
+      "textSnippet": "Students Management Manage student records and information ​ ​ Class ​ Class Section ​ Section Add Student Roll Number Name Class Section Parent Contact Status Actions 12 Ans 8964465 Grade 9 KBC 8689758456 Active 1 Bhavesh 12216146 Test A Active",
+      "width": 1000,
+      "height": 640,
+      "display": "block",
+      "visibility": "visible",
+      "opacity": "1",
+      "color": "rgba(0, 0, 0, 0.87)",
+      "background": "rgb(245, 245, 245)"
+    }
+  },
+  {
+    "route": "/attendance",
+    "url": "http://localhost:3001/attendance",
+    "screenshot": "attendance.png",
+    "info": {
+      "textSnippet": "Attendance Management Mark and track student attendance MARK ATTENDANCE VIEW ATTENDANCE CLASS ATTENDANCE Camera Face Recognition Open camera and press SPACEBAR to capture and recognize faces Open Camera for Attendance OR Upload Photo Manual Attendance Manually mark attendance if face recognition fails. Admins can add or delete records. MARK MANUALLY 2 Total Students 0 Present Today 0 Absent Today",
+      "width": 1000,
+      "height": 962.03125,
+      "display": "block",
+      "visibility": "visible",
+      "opacity": "1",
+      "color": "rgba(0, 0, 0, 0.87)",
+      "background": "rgb(245, 245, 245)"
+    }
+  },
+  {
+    "route": "/reports",
+    "url": "http://localhost:3001/reports",
+    "screenshot": "reports.png",
+    "info": {
+      "textSnippet": "Reports & Analytics Comprehensive attendance reports and Power BI integration Start Date Start Date End Date End Date Refresh Export Excel Export PDF Daily, Weekly, and Monthly Summary 2026-05-09 2026-05-08 2026-05-03 0 0.25 0.5 0.75 1 PresentAbsentLate Student-wise Attendance Analytics Ans Bhavesh 0 0.75 1.5 2.25 3 PresentTotal Class and Section Performance Grade 9 Test 0 0.75 1.5 2.25 3 PresentAbsentTotal",
+      "width": 1000,
+      "height": 1127.984375,
+      "display": "block",
+      "visibility": "visible",
+      "opacity": "1",
+      "color": "rgba(0, 0, 0, 0.87)",
+      "background": "rgb(245, 245, 245)"
+    }
+  },
+  {
+    "route": "/settings",
+    "url": "http://localhost:3001/settings",
+    "screenshot": "settings.png",
+    "info": {
+      "textSnippet": "System Settings Configure system parameters and preferences Face Recognition Tuning Configure recognition parameters and accuracy thresholds. Admin Users & Permissions Manage user accounts, roles, and access control. Admin Integrations & Backup Power BI setup, notifications, and system maintenance. Admin System Configuration • Configure face recognition parameters • Manage user accounts and permissions • Set up Power BI integration • Configure notification settings • System backup and maintenance Configure System Parameters Face Recognition Tuning Recognition Threshold Recognition Threshold Min Face Size (px) Min Face Size (px) Users & Permissions Allow teachers to edit attendance Power BI Integration Enable Power BI integration Power BI Workspace ID Power BI Workspace ID Power BI Dataset ID Power BI Dataset ID Notifications Enable email alerts Enable SMS alerts System Backup Enable scheduled backups Backup Schedule Backup Schedule Save Settings",
+      "width": 1000,
+      "height": 1369.625,
+      "display": "block",
+      "visibility": "visible",
+      "opacity": "1",
+      "color": "rgba(0, 0, 0, 0.87)",
+      "background": "rgb(245, 245, 245)"
+    }
+  },
+  {
+    "route": "/admin/add-teacher",
+    "url": "http://localhost:3001/admin/add-teacher",
+    "screenshot": "admin_add-teacher.png",
+    "info": {
+      "textSnippet": "Add Teacher Create, assign, and manage teacher accounts Teacher Details Username * Username * Email * Email * Password * Password * Full name * Full name * Assign to Class (optional) ​ Assign to Class (optional) CREATE TEACHER Classes 4 total ADD CLASS Class Section Academic Year Assigned Teacher Actions Grade 9 KBC 2025-2026 None EDIT DELETE Grade 9 KBC 2025-2026 None EDIT DELETE Test A 2023-2024 Teacher Two EDIT DELETE grade 4 ty 26-27 None EDIT DELETE Teachers 2 total Name Username Email Role Actions Teacher Two teacher2 teacher2@test.com teacher ASSIGN EDIT DELETE Teacher T1 T1@gmail.com teacher ASSIGN EDIT DELETE",
+      "width": 1000,
+      "height": 1105.484375,
+      "display": "block",
+      "visibility": "visible",
+      "opacity": "1",
+      "color": "rgba(0, 0, 0, 0.87)",
+      "background": "rgb(245, 245, 245)"
+    }
+  }
+]

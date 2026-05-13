@@ -1,0 +1,146 @@
+/* Mintlify-inspired Design System (Light & Dark Modes)
+   - Clean, mint-accented, documentation-focused
+   - Responsive, accessible, modern
+*/
+
+:root {
+  /* Brand Colors */
+  --mint: #00d4a4;
+  --deep-mint: #00b48a;
+  --soft-mint: #7cebcb;
+  --brand-blue: #3772cf;
+  --brand-annotate: #1ba673;
+  --brand-warn: #c37d0d;
+  --brand-error: #d45656;
+  --testimonial-orange: #f55a3c;
+
+  /* Surface */
+  --canvas: #ffffff;
+  --canvas-dark: #0a0a0a;
+  --surface: #f7f7f7;
+  --surface-soft: #fafafa;
+  --surface-code: #1c1c1e;
+  --hairline: #e5e5e5;
+  --hairline-soft: #ededed;
+
+  /* Text */
+  --ink: #0a0a0a;
+  --charcoal: #1c1c1e;
+  --slate: #3a3a3c;
+  --steel: #5a5a5c;
+  --stone: #888888;
+  --muted: #a8a8aa;
+
+  /* Typography */
+  --font-sans: 'Inter', 'Outfit', Arial, sans-serif;
+  --font-mono: 'Geist Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+
+  /* Spacing */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 96px;
+
+  /* Border Radius */
+  --radius-pill: 9999px;
+  --radius-card: 12px;
+  --radius-input: 8px;
+
+  /* Elevation */
+  --shadow-card: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+[data-theme="dark"] {
+  --canvas: #0a0a0a;
+  --surface: #18181b;
+  --surface-soft: #232326;
+  --surface-code: #232326;
+  --ink: #fff;
+  --charcoal: #e5e5e5;
+  --slate: #bdbdbd;
+  --steel: #a8a8aa;
+  --stone: #888888;
+  --muted: #5a5a5c;
+  --hairline: #232326;
+  --hairline-soft: #18181b;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  transition: background 0.2s, color 0.2s;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--hairline);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.button-primary {
+  background: var(--mint);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-lg);
+  height: 40px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.button-primary:hover {
+  background: var(--deep-mint);
+}
+
+.button-secondary {
+  background: transparent;
+  color: var(--mint);
+  border: 2px solid var(--mint);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-lg);
+  height: 40px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.button-secondary:hover {
+  background: var(--mint);
+  color: #fff;
+}
+
+.input {
+  height: 40px;
+  border-radius: var(--radius-input);
+  border: 1.5px solid var(--hairline);
+  padding: 0 var(--space-md);
+  font-size: 16px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  transition: border 0.2s;
+}
+.input:focus {
+  border: 2px solid var(--mint);
+  outline: none;
+}
+
+@media (max-width: 1024px) {
+  .main-content {
+    margin-left: 0;
+    padding: var(--space-md);
+  }
+}
+
+@media (max-width: 768px) {
+  .card {
+    padding: var(--space-md);
+  }
+}
