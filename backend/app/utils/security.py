@@ -5,8 +5,7 @@ import hashlib
 import os
 import logging
 from cryptography.fernet import Fernet
-from app.models import AuditLog, User
-from app import db
+from app import mongo
 import json
 
 class SecurityService:
@@ -97,36 +96,32 @@ class AuditService:
     
     @staticmethod
     def log_action(user_id, action, table_name=None, record_id=None, old_values=None, new_values=None):
-        """Log user action for audit purposes"""
+        """Log user action for audit purposes (stores to MongoDB)."""
         try:
-            # Get request information
             ip_address = None
             user_agent = None
-            
             if request:
                 ip_address = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
                 user_agent = request.headers.get('User-Agent', '')
-            
-            # Create audit log entry
-            audit_log = AuditLog(
-                user_id=user_id,
-                action=action,
-                table_name=table_name,
-                record_id=record_id,
-                old_values=json.dumps(old_values) if old_values else None,
-                new_values=json.dumps(new_values) if new_values else None,
-                ip_address=ip_address,
-                user_agent=user_agent[:255] if user_agent else None  # Limit length
-            )
-            
-            db.session.add(audit_log)
-            db.session.commit()
-            
-            logging.info(f"Audit log created: User {user_id} performed {action}")
-        
+
+            log_doc = {
+                'user_id': user_id,
+                'action': action,
+                'table_name': table_name,
+                'record_id': record_id,
+                'old_values': json.dumps(old_values) if old_values else None,
+                'new_values': json.dumps(new_values) if new_values else None,
+                'ip_address': ip_address,
+                'user_agent': user_agent[:255] if user_agent else None,
+                'created_at': datetime.utcnow().isoformat()
+            }
+            try:
+                mongo.db.audit_logs.insert_one(log_doc)
+                logging.info(f"Audit log created: User {user_id} performed {action}")
+            except Exception as ie:
+                logging.error(f"Error inserting audit log into MongoDB: {ie}")
         except Exception as e:
             logging.error(f"Error creating audit log: {str(e)}")
-            db.session.rollback()
 
 def audit_log(action, table_name=None):
     """Decorator for automatic audit logging"""
@@ -174,9 +169,19 @@ def require_role(required_roles):
             else:
                 required_roles_list = required_roles
             
-            if current_user.role not in required_roles_list:
+            # Support both dict-like (from Mongo) and object-like current_user
+            user_role = None
+            user_id = None
+            if isinstance(current_user, dict):
+                user_role = current_user.get('role')
+                user_id = current_user.get('_id') or current_user.get('id')
+            else:
+                user_role = getattr(current_user, 'role', None)
+                user_id = getattr(current_user, 'id', None)
+
+            if user_role not in required_roles_list:
                 AuditService.log_action(
-                    user_id=current_user.id,
+                    user_id=user_id,
                     action='UNAUTHORIZED_ACCESS_ATTEMPT',
                     table_name='users'
                 )

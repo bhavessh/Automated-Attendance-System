@@ -2,12 +2,35 @@ import json
 import os
 from datetime import datetime, timedelta
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:
+    def load_dotenv(path='.env'):
+        try:
+            here = os.path.dirname(os.path.abspath(__file__))
+            env_path = os.path.join(here, path)
+            if os.path.exists(env_path):
+                with open(env_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                        if '=' in line:
+                            k, v = line.split('=', 1)
+                            os.environ.setdefault(k.strip(), v.strip())
+        except Exception:
+            pass
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import UniqueConstraint
+# SQLAlchemy will be initialized only when Mongo is not used
+try:
+    from sqlalchemy import UniqueConstraint
+except Exception:
+    UniqueConstraint = None
+from werkzeug.security import check_password_hash, generate_password_hash
+from flask_pymongo import PyMongo
+from bson.objectid import ObjectId
 
 # Load environment variables
 load_dotenv()
@@ -16,16 +39,14 @@ load_dotenv()
 base_dir = os.path.dirname(os.path.abspath(__file__))
 instance_dir = os.path.join(base_dir, 'instance')
 app = Flask(__name__, instance_path=instance_dir, instance_relative_config=True)
-CORS(
-    app,
-    origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001"
-    ],
-    supports_credentials=True
-)
+CORS(app, resources={r"/api/*": {"origins": [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:3002",
+    "http://127.0.0.1:3002"
+] }}, supports_credentials=True, allow_headers=["Content-Type", "Authorization"], methods=["GET", "HEAD", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"])
 
 
 os.makedirs(app.instance_path, exist_ok=True)
@@ -45,9 +66,70 @@ app.config['UPLOAD_FOLDER'] = 'uploads/faces'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Initialize extensions
-db = SQLAlchemy(app)
+db = None
 #cors = CORS(app)
 jwt = JWTManager(app)
+
+# Optional MongoDB initialization (use when MONGODB_URI provided)
+mongo = None
+USE_MONGO = False
+mongo_uri = os.getenv('MONGODB_URI') or os.getenv('MONGO_URI')
+if mongo_uri:
+    app.config['MONGO_URI'] = mongo_uri
+    try:
+        mongo = PyMongo(app)
+        USE_MONGO = True
+        print(f"OK Connected to MongoDB: {mongo_uri.split('@')[-1]}")
+    except Exception as e:
+        print(f"Warning: MongoDB init failed: {e}")
+        mongo = None
+# Require MongoDB for this branch (pure-Mongo mode)
+if not USE_MONGO or not mongo:
+    raise RuntimeError("MONGODB_URI not configured or connection failed. This deployment requires MongoDB. Set MONGODB_URI in backend/.env or environment variables.")
+
+# --- Mongo helper utilities ---
+def _mongo_user_to_dict(user_doc):
+    if not user_doc:
+        return None
+    return {
+        'id': str(user_doc.get('_id')),
+        'username': user_doc.get('username'),
+        'email': user_doc.get('email'),
+        'role': user_doc.get('role'),
+        'full_name': user_doc.get('full_name'),
+        'is_active': user_doc.get('is_active', True),
+    }
+
+def _mongo_student_to_dict(doc):
+    if not doc:
+        return None
+    return {
+        'id': str(doc.get('_id')),
+        'roll_number': doc.get('roll_number'),
+        'admission_number': doc.get('admission_number'),
+        'full_name': doc.get('full_name'),
+        'class_name': doc.get('class_name'),
+        'section': doc.get('section'),
+        'date_of_birth': doc.get('date_of_birth'),
+        'parent_contact': doc.get('parent_contact'),
+        'parent_email': doc.get('parent_email'),
+        'profile_image': doc.get('profile_image'),
+        'is_active': doc.get('is_active', True),
+        'created_at': doc.get('created_at')
+    }
+
+def _mongo_find_student_by_admission(adm):
+    return mongo.db.students.find_one({'admission_number': adm})
+
+def _mongo_find_roll_conflict(roll_number, class_name, section, exclude_id=None):
+    q = {'roll_number': roll_number, 'class_name': class_name, 'section': section}
+    if exclude_id:
+        try:
+            q['_id'] = {'$ne': ObjectId(exclude_id)}
+        except Exception:
+            pass
+    return mongo.db.students.find_one(q)
+
 
 # Create upload directories if they don't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -62,76 +144,47 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 def health_check():
     return {'status': 'ok', 'message': 'Attendance System API is running'}
 
+
+@app.route('/api/mongo-test')
+def mongo_test():
+    if not USE_MONGO or not mongo:
+        return jsonify({'mongo': False, 'message': 'MongoDB not configured (set MONGODB_URI)'}), 400
+    try:
+        coll = mongo.db._test_collection
+        res = coll.insert_one({'test': 'ok', 'created_at': datetime.utcnow().isoformat()})
+        doc = coll.find_one({'_id': res.inserted_id})
+        return jsonify({'mongo': True, 'inserted_id': str(res.inserted_id), 'doc': {'test': doc.get('test')}}), 200
+    except Exception as e:
+        return jsonify({'mongo': False, 'error': str(e)}), 500
+
 @app.route('/api/test')
 def test_route():
     return {'message': 'Test endpoint working', 'database_uri': app.config['SQLALCHEMY_DATABASE_URI']}
 
-# School Class model
-class SchoolClass(db.Model):
-    __tablename__ = 'classes'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)
-    section = db.Column(db.String(10), nullable=False)
-    academic_year = db.Column(db.String(20))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
-    
-    def to_dict(self):
-        # Find teacher assigned to this class
-        teacher = User.query.filter_by(class_id=self.id).first()
-        return {
-            'id': self.id,
-            'name': self.name,
-            'section': self.section,
-            'academic_year': self.academic_year,
-            'teacher_name': teacher.full_name if teacher else None
-        }
 
-# Simple User model for authentication
-class User(db.Model):
-    __tablename__ = 'users'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(50), nullable=False, default='teacher')
-    full_name = db.Column(db.String(200), nullable=False)
-    is_active = db.Column(db.Boolean, default=True)
-    class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
-    
-    def check_password(self, password):
-        from werkzeug.security import check_password_hash
-        return check_password_hash(self.password_hash, password)
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'username': self.username,
-            'email': self.email,
-            'role': self.role,
-            'full_name': self.full_name,
-            'is_active': self.is_active,
-            'class_id': self.class_id
-        }
+@app.route('/api/mongo-test-echo')
+def mongo_test_echo():
+    """Duplicate debug endpoint to verify /api/mongo-test behavior."""
+    if not USE_MONGO or not mongo:
+        return jsonify({'mongo': False, 'message': 'MongoDB not configured (set MONGODB_URI)'}), 400
+    try:
+        coll = mongo.db._test_collection
+        res = coll.insert_one({'test': 'ok', 'created_at': datetime.utcnow().isoformat()})
+        doc = coll.find_one({'_id': res.inserted_id})
+        return jsonify({'mongo': True, 'inserted_id': str(res.inserted_id), 'doc': {'test': doc.get('test')}}), 200
+    except Exception as e:
+        return jsonify({'mongo': False, 'error': str(e)}), 500
 
-# System settings stored as JSON
-class SystemSetting(db.Model):
-    __tablename__ = 'system_settings'
 
-    id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(120), unique=True, nullable=False)
-    value = db.Column(db.Text, nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+@app.route('/api/routes')
+def list_routes():
+    """Return registered URL rules for debugging."""
+    rules = []
+    for r in app.url_map.iter_rules():
+        rules.append({'rule': r.rule, 'methods': list(r.methods)})
+    return jsonify({'routes': rules}), 200
 
-    def to_dict(self):
-        return {
-            'key': self.key,
-            'value': self.value,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        }
+# SQLAlchemy model classes removed — app runs in pure-Mongo mode
 
 # Login endpoint
 @app.route('/api/auth/login', methods=['POST'])
@@ -148,97 +201,145 @@ def login():
         if not username or not password:
             return jsonify({'error': 'Username and password required'}), 400
         
-        user = User.query.filter_by(username=username).first()
-        
-        if user and user.check_password(password) and user.is_active:
-            access_token = create_access_token(identity=user.id)
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        user_doc = mongo.db.users.find_one({'username': username})
+        if user_doc and check_password_hash(user_doc.get('password_hash', ''), password) and user_doc.get('is_active', True):
+            access_token = create_access_token(identity=str(user_doc.get('_id')))
             return jsonify({
                 'access_token': access_token,
-                'user': user.to_dict(),
+                'user': _mongo_user_to_dict(user_doc),
                 'message': 'Login successful'
             }), 200
-        else:
-            return jsonify({'error': 'Invalid credentials'}), 401
+        return jsonify({'error': 'Invalid credentials'}), 401
     
     except Exception as e:
         print(f"Login error: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
-# Student model
-class Student(db.Model):
-    __tablename__ = 'students'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    # roll_number should be unique per (class_name, section)
-    roll_number = db.Column(db.String(50), nullable=False)
-    # admission_number remains globally unique
-    admission_number = db.Column(db.String(50), unique=True, nullable=False)
-    full_name = db.Column(db.String(200), nullable=False)
-    class_name = db.Column(db.String(50), nullable=False)
-    section = db.Column(db.String(10), nullable=False)
-    date_of_birth = db.Column(db.Date)
-    parent_contact = db.Column(db.String(15))
-    parent_email = db.Column(db.String(120))
-    address = db.Column(db.Text)
-    face_encodings = db.Column(db.Text)  # JSON string of face encodings
-    profile_image = db.Column(db.String(255))  # Path to profile image
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
-    # Composite uniqueness at DB level
-    __table_args__ = (
-        UniqueConstraint('class_name', 'section', 'roll_number', name='uq_students_class_section_roll'),
-    )
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'roll_number': self.roll_number,
-            'admission_number': self.admission_number,
-            'full_name': self.full_name,
-            'class_name': self.class_name,
-            'section': self.section,
-            'date_of_birth': self.date_of_birth.isoformat() if self.date_of_birth else None,
-            'parent_contact': self.parent_contact,
-            'parent_email': self.parent_email,
-            'profile_image': self.profile_image,
-            'is_active': self.is_active,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
 
-# Attendance Record model
-class AttendanceRecord(db.Model):
-    __tablename__ = 'attendance_records'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
-    date = db.Column(db.Date, nullable=False)
-    time_in = db.Column(db.Time)
-    time_out = db.Column(db.Time)
-    status = db.Column(db.String(20), default='present')  # present, absent, late
-    confidence_score = db.Column(db.Float)  # Face recognition confidence
-    marked_by = db.Column(db.String(50), default='system')  # system, manual
-    notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
-    
-    # Relationship
-    student = db.relationship('Student', backref='attendance_records')
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'student_id': self.student_id,
-            'student_name': self.student.full_name if self.student else None,
-            'date': self.date.isoformat() if self.date else None,
-            'time_in': self.time_in.strftime('%H:%M:%S') if self.time_in else None,
-            'time_out': self.time_out.strftime('%H:%M:%S') if self.time_out else None,
-            'status': self.status,
-            'confidence_score': self.confidence_score,
-            'marked_by': self.marked_by,
-            'notes': self.notes,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
+# Ensure OPTIONS preflight and CORS headers are always returned for API routes
+@app.route('/api/auth/login', methods=['OPTIONS'])
+def login_options():
+    # empty response for preflight; headers added in after_request
+    return ('', 204)
+
+
+@app.after_request
+def _add_cors_headers(response):
+    origin = request.headers.get('Origin')
+    if origin:
+        # Echo back the Origin instead of using wildcard when credentials used
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, PATCH, DELETE'
+    return response
+
+
+# Handle OPTIONS preflight globally to ensure headers are present
+@app.before_request
+def _handle_options_global():
+    if request.method == 'OPTIONS' and request.path.startswith('/api/'):
+        origin = request.headers.get('Origin', '*')
+        res = app.make_response(('', 204))
+        res.headers['Access-Control-Allow-Origin'] = origin
+        res.headers['Vary'] = 'Origin'
+        res.headers['Access-Control-Allow-Credentials'] = 'true'
+        res.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        res.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, PATCH, DELETE'
+        return res
+
+
+# Catch-all OPTIONS for /api/* in case other handlers bypass before_request
+@app.route('/api/<path:any_path>', methods=['OPTIONS'])
+def _options_catch_all(any_path):
+    origin = request.headers.get('Origin', '*')
+    res = app.make_response(('', 204))
+    res.headers['Access-Control-Allow-Origin'] = origin
+    res.headers['Vary'] = 'Origin'
+    res.headers['Access-Control-Allow-Credentials'] = 'true'
+    res.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    res.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, PATCH, DELETE'
+    return res
+
+if not USE_MONGO:
+    # Student model
+    class Student(db.Model):
+        __tablename__ = 'students'
+        
+        id = db.Column(db.Integer, primary_key=True)
+        # roll_number should be unique per (class_name, section)
+        roll_number = db.Column(db.String(50), nullable=False)
+        # admission_number remains globally unique
+        admission_number = db.Column(db.String(50), unique=True, nullable=False)
+        full_name = db.Column(db.String(200), nullable=False)
+        class_name = db.Column(db.String(50), nullable=False)
+        section = db.Column(db.String(10), nullable=False)
+        date_of_birth = db.Column(db.Date)
+        parent_contact = db.Column(db.String(15))
+        parent_email = db.Column(db.String(120))
+        address = db.Column(db.Text)
+        face_encodings = db.Column(db.Text)  # JSON string of face encodings
+        profile_image = db.Column(db.String(255))  # Path to profile image
+        is_active = db.Column(db.Boolean, default=True)
+        created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+        updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+        # Composite uniqueness at DB level
+        __table_args__ = (
+            UniqueConstraint('class_name', 'section', 'roll_number', name='uq_students_class_section_roll'),
+        )
+        
+        def to_dict(self):
+            return {
+                'id': self.id,
+                'roll_number': self.roll_number,
+                'admission_number': self.admission_number,
+                'full_name': self.full_name,
+                'class_name': self.class_name,
+                'section': self.section,
+                'date_of_birth': self.date_of_birth.isoformat() if self.date_of_birth else None,
+                'parent_contact': self.parent_contact,
+                'parent_email': self.parent_email,
+                'profile_image': self.profile_image,
+                'is_active': self.is_active,
+                'created_at': self.created_at.isoformat() if self.created_at else None
+            }
+
+    # Attendance Record model
+    class AttendanceRecord(db.Model):
+        __tablename__ = 'attendance_records'
+        
+        id = db.Column(db.Integer, primary_key=True)
+        student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+        date = db.Column(db.Date, nullable=False)
+        time_in = db.Column(db.Time)
+        time_out = db.Column(db.Time)
+        status = db.Column(db.String(20), default='present')  # present, absent, late
+        confidence_score = db.Column(db.Float)  # Face recognition confidence
+        marked_by = db.Column(db.String(50), default='system')  # system, manual
+        notes = db.Column(db.Text)
+        created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+        updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+        
+        # Relationship
+        student = db.relationship('Student', backref='attendance_records')
+        
+        def to_dict(self):
+            return {
+                'id': self.id,
+                'student_id': self.student_id,
+                'student_name': self.student.full_name if self.student else None,
+                'date': self.date.isoformat() if self.date else None,
+                'time_in': self.time_in.strftime('%H:%M:%S') if self.time_in else None,
+                'time_out': self.time_out.strftime('%H:%M:%S') if self.time_out else None,
+                'status': self.status,
+                'confidence_score': self.confidence_score,
+                'marked_by': self.marked_by,
+                'notes': self.notes,
+                'created_at': self.created_at.isoformat() if self.created_at else None
+            }
 
 def _default_settings_payload():
     return {
@@ -304,27 +405,22 @@ def get_students():
         class_name = request.args.get('class')
         section = request.args.get('section')
         search = request.args.get('search')
-        
-        query = Student.query.filter_by(is_active=True)
-        
+
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        q = {'is_active': True}
         if class_name:
-            query = query.filter(Student.class_name == class_name)
-        
+            q['class_name'] = class_name
         if section:
-            query = query.filter(Student.section == section)
-        
+            q['section'] = section
         if search:
-            query = query.filter(
-                db.or_(
-                    Student.full_name.contains(search),
-                    Student.roll_number.contains(search),
-                    Student.admission_number.contains(search)
-                )
-            )
-        
-        students = query.all()
-        students_data = [student.to_dict() for student in students]
-        
+            q['$or'] = [
+                {'full_name': {'$regex': search, '$options': 'i'}},
+                {'roll_number': {'$regex': search, '$options': 'i'}},
+                {'admission_number': {'$regex': search, '$options': 'i'}}
+            ]
+        docs = list(mongo.db.students.find(q))
+        students_data = [_mongo_student_to_dict(d) for d in docs]
         return jsonify({'students': students_data, 'count': len(students_data)}), 200
     
     except Exception as e:
@@ -335,8 +431,14 @@ def get_students():
 def get_system_settings():
     """Get system settings"""
     try:
-        settings = _get_or_create_settings()
-        return jsonify({'settings': json.loads(settings.value)}), 200
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        doc = mongo.db.system_settings.find_one({'key': 'system_settings'})
+        if doc:
+            return jsonify({'settings': doc.get('value')}), 200
+        payload = _default_settings_payload()
+        mongo.db.system_settings.insert_one({'key': 'system_settings', 'value': payload, 'updated_at': datetime.utcnow().isoformat()})
+        return jsonify({'settings': payload}), 200
     except Exception as e:
         print(f"Get settings error: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
@@ -349,11 +451,9 @@ def update_system_settings():
         if not data or not isinstance(data, dict):
             return jsonify({'error': 'Invalid JSON data'}), 400
 
-        settings = _get_or_create_settings()
-        settings.value = json.dumps(data)
-        settings.updated_at = datetime.utcnow()
-        db.session.commit()
-
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        mongo.db.system_settings.update_one({'key': 'system_settings'}, {'$set': {'value': data, 'updated_at': datetime.utcnow().isoformat()}}, upsert=True)
         return jsonify({'message': 'Settings updated', 'settings': data}), 200
     except Exception as e:
         db.session.rollback()
@@ -369,35 +469,52 @@ def get_reports_summary():
         class_name = request.args.get('class')
         section = request.args.get('section')
 
-        query = db.session.query(
-            AttendanceRecord.date.label('date'),
-            db.func.count(AttendanceRecord.id).label('total'),
-            db.func.sum(db.case((AttendanceRecord.status == 'present', 1), else_=0)).label('present'),
-            db.func.sum(db.case((AttendanceRecord.status == 'absent', 1), else_=0)).label('absent'),
-            db.func.sum(db.case((AttendanceRecord.status == 'late', 1), else_=0)).label('late')
-        ).join(Student)
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        match = {}
+        if start_date or end_date:
+            date_query = {}
+            if start_date:
+                date_query['$gte'] = start_date.isoformat()
+            if end_date:
+                date_query['$lte'] = end_date.isoformat()
+            match['date'] = date_query
 
-        if start_date:
-            query = query.filter(AttendanceRecord.date >= start_date)
-        if end_date:
-            query = query.filter(AttendanceRecord.date <= end_date)
-        if class_name:
-            query = query.filter(Student.class_name == class_name)
-        if section:
-            query = query.filter(Student.section == section)
+        if class_name or section:
+            student_q = {'is_active': True}
+            if class_name:
+                student_q['class_name'] = class_name
+            if section:
+                student_q['section'] = section
+            students = list(mongo.db.students.find(student_q, {'_id': 1}))
+            student_ids = [str(s.get('_id')) for s in students]
+            match['student_id'] = {'$in': student_ids} if student_ids else {'$in': []}
 
+        pipeline = [
+            {'$match': match} if match else {'$match': {}},
+            {'$group': {
+                '_id': '$date',
+                'total': {'$sum': 1},
+                'present': {'$sum': {'$cond': [{'$eq': ['$status', 'present']}, 1, 0]}},
+                'absent': {'$sum': {'$cond': [{'$eq': ['$status', 'absent']}, 1, 0]}},
+                'late': {'$sum': {'$cond': [{'$eq': ['$status', 'late']}, 1, 0]}}
+            }},
+            {'$sort': {'_id': -1}}
+        ]
+        agg = list(mongo.db.attendance_records.aggregate(pipeline))
         summary = []
-        for row in query.group_by(AttendanceRecord.date).order_by(AttendanceRecord.date.desc()).all():
-            rate = round((row.present / row.total) * 100, 2) if row.total else 0.0
+        for row in agg:
+            total = row.get('total', 0)
+            present = row.get('present', 0)
+            rate = round((present / total) * 100, 2) if total else 0.0
             summary.append({
-                'date': row.date.isoformat(),
-                'total': row.total,
-                'present': row.present,
-                'absent': row.absent,
-                'late': row.late,
+                'date': row.get('_id'),
+                'total': total,
+                'present': present,
+                'absent': row.get('absent', 0),
+                'late': row.get('late', 0),
                 'attendance_rate': rate
             })
-
         return jsonify({'summary': summary}), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -414,41 +531,58 @@ def get_student_analytics():
         class_name = request.args.get('class')
         section = request.args.get('section')
 
-        query = db.session.query(
-            Student.id.label('student_id'),
-            Student.full_name.label('student_name'),
-            Student.class_name.label('class_name'),
-            Student.section.label('section'),
-            db.func.count(AttendanceRecord.id).label('total'),
-            db.func.sum(db.case((AttendanceRecord.status == 'present', 1), else_=0)).label('present'),
-            db.func.sum(db.case((AttendanceRecord.status == 'absent', 1), else_=0)).label('absent'),
-            db.func.sum(db.case((AttendanceRecord.status == 'late', 1), else_=0)).label('late')
-        ).join(AttendanceRecord, AttendanceRecord.student_id == Student.id)
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+            match = {}
+            if start_date or end_date:
+                date_q = {}
+                if start_date:
+                    date_q['$gte'] = start_date.isoformat()
+                if end_date:
+                    date_q['$lte'] = end_date.isoformat()
+                match['date'] = date_q
 
-        if start_date:
-            query = query.filter(AttendanceRecord.date >= start_date)
-        if end_date:
-            query = query.filter(AttendanceRecord.date <= end_date)
-        if class_name:
-            query = query.filter(Student.class_name == class_name)
-        if section:
-            query = query.filter(Student.section == section)
+            if class_name or section:
+                student_q = {'is_active': True}
+                if class_name:
+                    student_q['class_name'] = class_name
+                if section:
+                    student_q['section'] = section
+                students = list(mongo.db.students.find(student_q, {'_id': 1, 'full_name': 1, 'class_name': 1, 'section': 1}))
+                student_ids = [str(s['_id']) for s in students]
+                if student_ids:
+                    match['student_id'] = {'$in': student_ids}
+                else:
+                    # no students match filter
+                    return jsonify({'students': []}), 200
 
+        pipeline = [
+            {'$match': match} if match else {'$match': {}},
+            {'$group': {
+                '_id': '$student_id',
+                'total': {'$sum': 1},
+                'present': {'$sum': {'$cond': [{'$eq': ['$status', 'present']}, 1, 0]}},
+                'absent': {'$sum': {'$cond': [{'$eq': ['$status', 'absent']}, 1, 0]}},
+                'late': {'$sum': {'$cond': [{'$eq': ['$status', 'late']}, 1, 0]}}
+            }},
+        ]
+        agg = list(mongo.db.attendance_records.aggregate(pipeline))
         analytics = []
-        for row in query.group_by(Student.id).order_by(Student.full_name).all():
-            rate = round((row.present / row.total) * 100, 2) if row.total else 0.0
+        for row in agg:
+            sid = row.get('_id')
+            sdoc = mongo.db.students.find_one({'_id': ObjectId(sid)}) if ObjectId.is_valid(sid) else mongo.db.students.find_one({'_id': sid})
+            rate = round((row.get('present', 0) / row.get('total', 0)) * 100, 2) if row.get('total', 0) else 0.0
             analytics.append({
-                'student_id': row.student_id,
-                'student_name': row.student_name,
-                'class_name': row.class_name,
-                'section': row.section,
-                'total': row.total,
-                'present': row.present,
-                'absent': row.absent,
-                'late': row.late,
+                'student_id': sid,
+                'student_name': sdoc.get('full_name') if sdoc else None,
+                'class_name': sdoc.get('class_name') if sdoc else None,
+                'section': sdoc.get('section') if sdoc else None,
+                'total': row.get('total', 0),
+                'present': row.get('present', 0),
+                'absent': row.get('absent', 0),
+                'late': row.get('late', 0),
                 'attendance_rate': rate
             })
-
         return jsonify({'students': analytics}), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -463,34 +597,44 @@ def get_class_analytics():
         start_date = _parse_date(request.args.get('start_date'), 'start_date')
         end_date = _parse_date(request.args.get('end_date'), 'end_date')
 
-        query = db.session.query(
-            Student.class_name.label('class_name'),
-            Student.section.label('section'),
-            db.func.count(AttendanceRecord.id).label('total'),
-            db.func.sum(db.case((AttendanceRecord.status == 'present', 1), else_=0)).label('present'),
-            db.func.sum(db.case((AttendanceRecord.status == 'absent', 1), else_=0)).label('absent'),
-            db.func.sum(db.case((AttendanceRecord.status == 'late', 1), else_=0)).label('late')
-        ).join(AttendanceRecord, AttendanceRecord.student_id == Student.id)
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+            match = {}
+            if start_date or end_date:
+                date_q = {}
+                if start_date:
+                    date_q['$gte'] = start_date.isoformat()
+                if end_date:
+                    date_q['$lte'] = end_date.isoformat()
+                match['date'] = date_q
 
-        if start_date:
-            query = query.filter(AttendanceRecord.date >= start_date)
-        if end_date:
-            query = query.filter(AttendanceRecord.date <= end_date)
+            # aggregate by student to get class & section
+            pipeline = [
+                {'$match': match} if match else {'$match': {}},
+                {'$group': {'_id': '$student_id', 'count': {'$sum': 1}, 'present': {'$sum': {'$cond': [{'$eq': ['$status', 'present']}, 1, 0]}}, 'absent': {'$sum': {'$cond': [{'$eq': ['$status', 'absent']}, 1, 0]}}, 'late': {'$sum': {'$cond': [{'$eq': ['$status', 'late']}, 1, 0]}}}},
+            ]
+            agg = list(mongo.db.attendance_records.aggregate(pipeline))
+            # bucket by class & section
+            buckets = {}
+            for row in agg:
+                sid = row.get('_id')
+                sdoc = mongo.db.students.find_one({'_id': ObjectId(sid)}) if ObjectId.is_valid(sid) else mongo.db.students.find_one({'_id': sid})
+                if not sdoc:
+                    continue
+                key = (sdoc.get('class_name'), sdoc.get('section'))
+                if key not in buckets:
+                    buckets[key] = {'total': 0, 'present': 0, 'absent': 0, 'late': 0}
+                buckets[key]['total'] += row.get('count', 0)
+                buckets[key]['present'] += row.get('present', 0)
+                buckets[key]['absent'] += row.get('absent', 0)
+                buckets[key]['late'] += row.get('late', 0)
 
-        analytics = []
-        for row in query.group_by(Student.class_name, Student.section).order_by(Student.class_name, Student.section).all():
-            rate = round((row.present / row.total) * 100, 2) if row.total else 0.0
-            analytics.append({
-                'class_name': row.class_name,
-                'section': row.section,
-                'total': row.total,
-                'present': row.present,
-                'absent': row.absent,
-                'late': row.late,
-                'attendance_rate': rate
-            })
-
-        return jsonify({'classes': analytics}), 200
+            analytics = []
+            for (cls, sec), vals in sorted(buckets.items()):
+                total = vals['total']
+                rate = round((vals['present'] / total) * 100, 2) if total else 0.0
+                analytics.append({'class_name': cls, 'section': sec, 'total': total, 'present': vals['present'], 'absent': vals['absent'], 'late': vals['late'], 'attendance_rate': rate})
+            return jsonify({'classes': analytics}), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -507,20 +651,48 @@ def export_attendance_report():
         class_name = request.args.get('class')
         section = request.args.get('section')
 
-        records = _attendance_query(start_date, end_date, class_name, section).all()
         export_rows = []
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        q = {}
+        if start_date or end_date:
+            date_q = {}
+            if start_date:
+                date_q['$gte'] = start_date.isoformat()
+            if end_date:
+                date_q['$lte'] = end_date.isoformat()
+            q['date'] = date_q
+
+        if class_name or section:
+            student_q = {'is_active': True}
+            if class_name:
+                student_q['class_name'] = class_name
+            if section:
+                student_q['section'] = section
+            students = list(mongo.db.students.find(student_q, {'_id': 1, 'full_name': 1, 'roll_number': 1, 'class_name': 1, 'section': 1}))
+            student_ids = [str(s['_id']) for s in students]
+            if student_ids:
+                q['student_id'] = {'$in': student_ids}
+            else:
+                q['student_id'] = {'$in': []}
+
+        records = list(mongo.db.attendance_records.find(q).sort('date', 1))
         for record in records:
+            student_doc = None
+            sid = record.get('student_id')
+            if sid:
+                student_doc = mongo.db.students.find_one({'_id': ObjectId(sid)}) if ObjectId.is_valid(sid) else mongo.db.students.find_one({'_id': sid})
             export_rows.append({
-                'date': record.date.isoformat() if record.date else None,
-                'student_id': record.student_id,
-                'student_name': record.student.full_name if record.student else None,
-                'roll_number': record.student.roll_number if record.student else None,
-                'class': record.student.class_name if record.student else None,
-                'section': record.student.section if record.student else None,
-                'status': record.status,
-                'time_in': record.time_in.strftime('%H:%M:%S') if record.time_in else None,
-                'time_out': record.time_out.strftime('%H:%M:%S') if record.time_out else None,
-                'marked_by': record.marked_by
+                'date': record.get('date'),
+                'student_id': record.get('student_id'),
+                'student_name': student_doc.get('full_name') if student_doc else None,
+                'roll_number': student_doc.get('roll_number') if student_doc else None,
+                'class': student_doc.get('class_name') if student_doc else None,
+                'section': student_doc.get('section') if student_doc else None,
+                'status': record.get('status'),
+                'time_in': record.get('time_in'),
+                'time_out': record.get('time_out'),
+                'marked_by': record.get('marked_by')
             })
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -604,55 +776,41 @@ def create_student():
         if not all([roll_number, admission_number, class_name, section]):
             return jsonify({'error': 'roll_number, admission_number, class_name and section are required'}), 400
 
-        existing_adm = Student.query.filter(Student.admission_number == admission_number).first()
-        if existing_adm:
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        # Check admission uniqueness
+        if _mongo_find_student_by_admission(admission_number):
             return jsonify({'error': 'A student with this admission number already exists'}), 400
 
-        existing_roll = Student.query.filter(
-            db.and_(
-                Student.roll_number == roll_number,
-                Student.class_name == class_name,
-                Student.section == section
-            )
-        ).first()
-        if existing_roll:
+        if _mongo_find_roll_conflict(roll_number, class_name, section):
             return jsonify({'error': 'A student with this roll number already exists in this class and section'}), 400
-        
-        # Parse date if provided
-        date_of_birth = None
-        if data.get('date_of_birth'):
-            try:
-                date_of_birth = datetime.strptime(data.get('date_of_birth'), '%Y-%m-%d').date()
-            except ValueError:
-                return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
-        
-        # Create new student
-        student = Student(
-            roll_number=data.get('roll_number'),
-            admission_number=data.get('admission_number'),
-            full_name=data.get('full_name'),
-            class_name=data.get('class_name'),
-            section=data.get('section'),
-            date_of_birth=date_of_birth,
-            parent_contact=data.get('parent_contact'),
-            parent_email=data.get('parent_email'),
-            address=data.get('address')
-        )
-        
-        db.session.add(student)
-        db.session.commit()
-        
-        return jsonify({
-            'message': 'Student created successfully',
-            'student': student.to_dict()
-        }), 201
+
+        date_of_birth = data.get('date_of_birth')
+        student_doc = {
+            'roll_number': roll_number,
+            'admission_number': admission_number,
+            'full_name': data.get('full_name'),
+            'class_name': class_name,
+            'section': section,
+            'date_of_birth': date_of_birth,
+            'parent_contact': data.get('parent_contact'),
+            'parent_email': data.get('parent_email'),
+            'address': data.get('address'),
+            'face_encodings': [],
+            'profile_image': None,
+            'is_active': True,
+            'created_at': datetime.utcnow().isoformat()
+        }
+        res = mongo.db.students.insert_one(student_doc)
+        student_doc['_id'] = res.inserted_id
+        return jsonify({'message': 'Student created successfully', 'student': _mongo_student_to_dict(student_doc)}), 201
     
     except Exception as e:
         db.session.rollback()
         print(f"Create student error: {str(e)}")
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
-@app.route('/api/students/<int:student_id>', methods=['PUT'])
+@app.route('/api/students/<student_id>', methods=['PUT'])
 def update_student(student_id):
     """Update student details with uniqueness validation"""
     try:
@@ -660,73 +818,74 @@ def update_student(student_id):
         if not data or not isinstance(data, dict):
             return jsonify({'error': 'Invalid JSON data'}), 400
 
-        student = Student.query.get(student_id)
-        if not student:
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        # student_id is expected to be a string ObjectId
+        try:
+            sdoc = mongo.db.students.find_one({'_id': ObjectId(student_id)})
+        except Exception:
+            return jsonify({'error': 'Invalid student id'}), 400
+        if not sdoc:
             return jsonify({'error': 'Student not found'}), 404
 
-        full_name = data.get('full_name', student.full_name)
-        class_name = data.get('class_name', student.class_name)
-        section = data.get('section', student.section)
-        roll_number = data.get('roll_number', student.roll_number)
-        admission_number = data.get('admission_number', student.admission_number)
+        full_name = data.get('full_name', sdoc.get('full_name'))
+        class_name = data.get('class_name', sdoc.get('class_name'))
+        section = data.get('section', sdoc.get('section'))
+        roll_number = data.get('roll_number', sdoc.get('roll_number'))
+        admission_number = data.get('admission_number', sdoc.get('admission_number'))
 
-        # Admission number global uniqueness (exclude self)
-        exists_adm = Student.query.filter(
-            db.and_(Student.admission_number == admission_number, Student.id != student_id)
-        ).first()
+        # Admission number uniqueness
+        exists_adm = mongo.db.students.find_one({'admission_number': admission_number, '_id': {'$ne': sdoc.get('_id')}})
         if exists_adm:
             return jsonify({'error': 'A student with this admission number already exists'}), 400
 
-        # Roll number unique per class+section (exclude self)
-        exists_roll = Student.query.filter(
-            db.and_(
-                Student.roll_number == roll_number,
-                Student.class_name == class_name,
-                Student.section == section,
-                Student.id != student_id
-            )
-        ).first()
+        # Roll number uniqueness per class+section
+        exists_roll = mongo.db.students.find_one({
+            'roll_number': roll_number,
+            'class_name': class_name,
+            'section': section,
+            '_id': {'$ne': sdoc.get('_id')}
+        })
         if exists_roll:
             return jsonify({'error': 'A student with this roll number already exists in this class and section'}), 400
 
-        # Apply updates
-        student.full_name = full_name
-        student.class_name = class_name
-        student.section = section
-        student.roll_number = roll_number
-        student.admission_number = admission_number
-        student.parent_contact = data.get('parent_contact', student.parent_contact)
-        student.parent_email = data.get('parent_email', student.parent_email)
-        student.address = data.get('address', student.address)
+        updates = {
+            'full_name': full_name,
+            'class_name': class_name,
+            'section': section,
+            'roll_number': roll_number,
+            'admission_number': admission_number,
+            'parent_contact': data.get('parent_contact', sdoc.get('parent_contact')),
+            'parent_email': data.get('parent_email', sdoc.get('parent_email')),
+            'address': data.get('address', sdoc.get('address'))
+        }
 
         if 'date_of_birth' in data:
             dob_value = data.get('date_of_birth')
-            if dob_value:
-                try:
-                    student.date_of_birth = datetime.strptime(dob_value, '%Y-%m-%d').date()
-                except ValueError:
-                    return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
-            else:
-                student.date_of_birth = None
+            updates['date_of_birth'] = dob_value if dob_value else None
 
-        db.session.commit()
-        return jsonify({'message': 'Student updated successfully', 'student': student.to_dict()}), 200
+        mongo.db.students.update_one({'_id': sdoc.get('_id')}, {'$set': updates})
+        newdoc = mongo.db.students.find_one({'_id': sdoc.get('_id')})
+        return jsonify({'message': 'Student updated successfully', 'student': _mongo_student_to_dict(newdoc)}), 200
     except Exception as e:
         db.session.rollback()
         print(f"Update student error: {str(e)}")
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
-@app.route('/api/students/<int:student_id>', methods=['DELETE'])
+@app.route('/api/students/<student_id>', methods=['DELETE'])
 def delete_student(student_id):
     """Delete a student and their attendance records"""
     try:
-        student = Student.query.get(student_id)
-        if not student:
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        try:
+            sdoc = mongo.db.students.find_one({'_id': ObjectId(student_id)})
+        except Exception:
+            return jsonify({'error': 'Invalid student id'}), 400
+        if not sdoc:
             return jsonify({'error': 'Student not found'}), 404
-
-        AttendanceRecord.query.filter_by(student_id=student_id).delete()
-        db.session.delete(student)
-        db.session.commit()
+        mongo.db.attendance_records.delete_many({'student_id': str(sdoc.get('_id'))})
+        mongo.db.students.delete_one({'_id': sdoc.get('_id')})
         return jsonify({'message': 'Student deleted successfully'}), 200
     except Exception as e:
         db.session.rollback()
@@ -767,37 +926,32 @@ def mark_manual_attendance():
         else:
             time_in = datetime.now().time()
         
-        # Check if student exists
-        student = Student.query.get(student_id)
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        try:
+            student = mongo.db.students.find_one({'_id': ObjectId(student_id)})
+        except Exception:
+            return jsonify({'error': 'Invalid student id'}), 400
         if not student:
             return jsonify({'error': 'Student not found'}), 404
-        
+
         # Check if attendance already exists for this date
-        existing_record = AttendanceRecord.query.filter_by(
-            student_id=student_id,
-            date=attendance_date
-        ).first()
-        
+        existing_record = mongo.db.attendance_records.find_one({'student_id': str(student.get('_id')), 'date': attendance_date.isoformat()})
         if existing_record:
             return jsonify({'error': 'Attendance already marked for this date'}), 400
-        
-        # Create attendance record
-        attendance = AttendanceRecord(
-            student_id=student_id,
-            date=attendance_date,
-            time_in=time_in,
-            status=status,
-            marked_by='manual',
-            notes=notes
-        )
-        
-        db.session.add(attendance)
-        db.session.commit()
-        
-        return jsonify({
-            'message': 'Attendance marked successfully',
-            'attendance': attendance.to_dict()
-        }), 201
+
+        attendance_doc = {
+            'student_id': str(student.get('_id')),
+            'date': attendance_date.isoformat(),
+            'time_in': time_in.strftime('%H:%M:%S') if time_in else None,
+            'status': status,
+            'marked_by': 'manual',
+            'notes': notes,
+            'created_at': datetime.utcnow().isoformat()
+        }
+        res = mongo.db.attendance_records.insert_one(attendance_doc)
+        attendance_doc['_id'] = res.inserted_id
+        return jsonify({'message': 'Attendance marked successfully', 'attendance': attendance_doc}), 201
     
     except Exception as e:
         db.session.rollback()
@@ -816,89 +970,118 @@ def get_attendance_by_date(date_str):
         class_name = request.args.get('class')
         section = request.args.get('section')
         
-        # Build query
-        query = db.session.query(AttendanceRecord).join(Student).filter(
-            AttendanceRecord.date == attendance_date
-        )
-        
-        if class_name:
-            query = query.filter(Student.class_name == class_name)
-        
-        if section:
-            query = query.filter(Student.section == section)
-        
-        attendance_records = query.all()
-        attendance_data = [record.to_dict() for record in attendance_records]
-        
-        return jsonify({
-            'date': date_str,
-            'attendance': attendance_data,
-            'count': len(attendance_data)
-        }), 200
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        q = {'date': attendance_date.isoformat()}
+        if class_name or section:
+            student_q = {'is_active': True}
+            if class_name:
+                student_q['class_name'] = class_name
+            if section:
+                student_q['section'] = section
+            students = list(mongo.db.students.find(student_q, {'_id': 1, 'full_name': 1, 'roll_number': 1, 'class_name': 1, 'section': 1}))
+            student_ids = [str(s.get('_id')) for s in students]
+            q['student_id'] = {'$in': student_ids}
+        attendance_records = list(mongo.db.attendance_records.find(q))
+        attendance_data = []
+        for record in attendance_records:
+            student_doc = mongo.db.students.find_one({'_id': ObjectId(record.get('student_id'))}) if record.get('student_id') else None
+            attendance_data.append({
+                'id': str(record.get('_id')),
+                'student_id': record.get('student_id'),
+                'student_name': student_doc.get('full_name') if student_doc else None,
+                'date': record.get('date'),
+                'time_in': record.get('time_in'),
+                'time_out': record.get('time_out'),
+                'status': record.get('status'),
+                'marked_by': record.get('marked_by'),
+                'notes': record.get('notes')
+            })
+
+        return jsonify({'date': date_str, 'attendance': attendance_data, 'count': len(attendance_data)}), 200
     
     except Exception as e:
         print(f"Get attendance by date error: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
-@app.route('/api/attendance/<int:attendance_id>', methods=['DELETE'])
+@app.route('/api/attendance/<attendance_id>', methods=['DELETE'])
 def delete_attendance_record(attendance_id):
     """Delete a specific attendance record"""
     try:
-        record = AttendanceRecord.query.get(attendance_id)
-        if not record:
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        try:
+            aid = ObjectId(attendance_id) if ObjectId.is_valid(attendance_id) else attendance_id
+        except Exception:
+            aid = attendance_id
+        rec = None
+        if isinstance(aid, ObjectId):
+            rec = mongo.db.attendance_records.find_one({'_id': aid})
+        else:
+            rec = mongo.db.attendance_records.find_one({'_id': aid})
+
+        if not rec:
             return jsonify({'error': 'Attendance record not found'}), 404
 
-        # Serialize before deleting to avoid session issues
-        record_dict = record.to_dict()
-        db.session.delete(record)
-        db.session.commit()
-
-        return jsonify({
-            'message': 'Attendance record deleted successfully',
-            'attendance': record_dict
-        }), 200
+        rec_out = rec.copy()
+        rec_out['id'] = str(rec_out.get('_id'))
+        mongo.db.attendance_records.delete_one({'_id': rec.get('_id')})
+        return jsonify({'message': 'Attendance record deleted successfully', 'attendance': rec_out}), 200
 
     except Exception as e:
         db.session.rollback()
         print(f"Delete attendance record error: {str(e)}")
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
-@app.route('/api/attendance/student/<int:student_id>', methods=['GET'])
+@app.route('/api/attendance/student/<student_id>', methods=['GET'])
 def get_student_attendance_history(student_id):
     """Get attendance history for specific student"""
     try:
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
         
-        # Check if student exists
-        student = Student.query.get(student_id)
-        if not student:
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        try:
+            sdoc = mongo.db.students.find_one({'_id': ObjectId(student_id)})
+        except Exception:
+            return jsonify({'error': 'Invalid student id'}), 400
+        if not sdoc:
             return jsonify({'error': 'Student not found'}), 404
-        
-        query = AttendanceRecord.query.filter_by(student_id=student_id)
-        
+
+        q = {'student_id': str(sdoc.get('_id'))}
         if start_date_str:
             try:
                 start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                query = query.filter(AttendanceRecord.date >= start_date)
+                q['date'] = {'$gte': start_date.isoformat()}
             except ValueError:
                 return jsonify({'error': 'Invalid start_date format. Use YYYY-MM-DD'}), 400
-        
         if end_date_str:
             try:
                 end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                query = query.filter(AttendanceRecord.date <= end_date)
+                if 'date' in q:
+                    q['date']['$lte'] = end_date.isoformat()
+                else:
+                    q['date'] = {'$lte': end_date.isoformat()}
             except ValueError:
                 return jsonify({'error': 'Invalid end_date format. Use YYYY-MM-DD'}), 400
-        
-        attendance_records = query.order_by(AttendanceRecord.date.desc()).all()
-        attendance_data = [record.to_dict() for record in attendance_records]
-        
-        return jsonify({
-            'student': student.to_dict(),
-            'attendance_history': attendance_data,
-            'count': len(attendance_data)
-        }), 200
+
+        records = list(mongo.db.attendance_records.find(q).sort('date', -1))
+        attendance_data = []
+        for r in records:
+            attendance_data.append({
+                'id': str(r.get('_id')),
+                'student_id': r.get('student_id'),
+                'date': r.get('date'),
+                'time_in': r.get('time_in'),
+                'time_out': r.get('time_out'),
+                'status': r.get('status'),
+                'confidence_score': r.get('confidence_score'),
+                'marked_by': r.get('marked_by'),
+                'notes': r.get('notes')
+            })
+
+        return jsonify({'student': _mongo_student_to_dict(sdoc), 'attendance_history': attendance_data, 'count': len(attendance_data)}), 200
     
     except Exception as e:
         print(f"Get student attendance history error: {str(e)}")
@@ -914,36 +1097,42 @@ def get_attendance_statistics():
         section = request.args.get('section')
         today = datetime.now().date()
 
-        students_q = Student.query.filter_by(is_active=True)
-        if class_name:
-            students_q = students_q.filter(Student.class_name == class_name)
-        if section:
-            students_q = students_q.filter(Student.section == section)
-        total_students = students_q.count()
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
 
-        ar_q = db.session.query(AttendanceRecord).join(Student).filter(AttendanceRecord.date == today)
+        student_filter = {'is_active': True}
         if class_name:
-            ar_q = ar_q.filter(Student.class_name == class_name)
+            student_filter['class_name'] = class_name
         if section:
-            ar_q = ar_q.filter(Student.section == section)
-        present_today = ar_q.filter(AttendanceRecord.status == 'present').count()
-        absent_today = ar_q.filter(AttendanceRecord.status == 'absent').count()
+            student_filter['section'] = section
+
+        total_students = mongo.db.students.count_documents(student_filter)
+
+        # Prepare attendance filter for today
+        date_str = today.isoformat()
+        attendance_filter = {'date': date_str}
+        # restrict by student ids if class/section filters present
+        if class_name or section:
+            students = list(mongo.db.students.find(student_filter, {'_id': 1}))
+            student_ids = [str(s.get('_id')) for s in students]
+            attendance_filter['student_id'] = {'$in': student_ids} if student_ids else {'$in': []}
+
+        present_today = mongo.db.attendance_records.count_documents({**attendance_filter, 'status': 'present'})
+        absent_today = mongo.db.attendance_records.count_documents({**attendance_filter, 'status': 'absent'})
 
         rate = round((present_today / total_students) * 100, 2) if total_students else 0.0
 
-        # Calculate trend for last 7 days
+        # trend for last 7 days
         trend_data = []
         for i in range(6, -1, -1):
             day = today - timedelta(days=i)
-            day_q = db.session.query(AttendanceRecord).join(Student).filter(AttendanceRecord.date == day)
-            if class_name:
-                day_q = day_q.filter(Student.class_name == class_name)
-            if section:
-                day_q = day_q.filter(Student.section == section)
-            
-            p_count = day_q.filter(AttendanceRecord.status == 'present').count()
-            a_count = day_q.filter(AttendanceRecord.status == 'absent').count()
-            l_count = day_q.filter(AttendanceRecord.status == 'late').count()
+            ds = day.isoformat()
+            day_filter = {'date': ds}
+            if class_name or section:
+                day_filter['student_id'] = attendance_filter.get('student_id', {'$in': []})
+            p_count = mongo.db.attendance_records.count_documents({**day_filter, 'status': 'present'})
+            a_count = mongo.db.attendance_records.count_documents({**day_filter, 'status': 'absent'})
+            l_count = mongo.db.attendance_records.count_documents({**day_filter, 'status': 'late'})
             trend_data.append({
                 'date': day.strftime('%m-%d'),
                 'present': p_count,
@@ -967,62 +1156,78 @@ import json
 import os
 from io import BytesIO
 
-import cv2
-# Face Recognition Service
-import face_recognition
-import numpy as np
+# Optional heavy deps (CV/face recognition). Import lazily and handle absence.
+HAVE_CV2 = False
+HAVE_FACE_RECOG = False
+HAVE_NUMPY = False
+HAVE_PIL = False
+try:
+    import cv2
+    HAVE_CV2 = True
+except Exception:
+    cv2 = None
+
+try:
+    import face_recognition
+    HAVE_FACE_RECOG = True
+except Exception:
+    face_recognition = None
+
+try:
+    import numpy as np
+    HAVE_NUMPY = True
+except Exception:
+    np = None
+
 from flask import send_file
-from PIL import Image
+try:
+    from PIL import Image
+    HAVE_PIL = True
+except Exception:
+    Image = None
 from werkzeug.utils import secure_filename
 
 
 # Face Recognition Endpoints
-@app.route('/api/students/<int:student_id>/upload-photo', methods=['POST'])
+@app.route('/api/students/<student_id>/upload-photo', methods=['POST'])
 def upload_student_photo(student_id):
     """Upload or capture student photo (file or base64) and register face"""
     try:
-        print(f"Upload photo request for student {student_id}")
-        print(f"Request files: {list(request.files.keys())}")
-        # Check if student exists first
-        student = Student.query.get(student_id)
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        # find student
+        try:
+            student = mongo.db.students.find_one({'_id': ObjectId(student_id)}) if ObjectId.is_valid(student_id) else mongo.db.students.find_one({'_id': student_id})
+        except Exception:
+            return jsonify({'error': 'Invalid student id'}), 400
         if not student:
             return jsonify({'error': 'Student not found'}), 404
 
         image_array = None
         saved_filepath = None
 
-        # Path A: base64 image from webcam via 'image_data'
         if 'image_data' in request.form:
             try:
                 image_data = request.form['image_data']
                 if image_data.startswith('data:image'):
-                    # Remove "data:image/png;base64," prefix
                     image_data = image_data.split(',', 1)[1]
                 image_bytes = base64.b64decode(image_data)
                 pil_image = Image.open(BytesIO(image_bytes)).convert('RGB')
                 image_array = np.array(pil_image)
-
-                # Save a copy as profile image
                 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
                 filename = secure_filename(f"student_{student_id}_capture.png")
                 saved_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 pil_image.save(saved_filepath)
             except Exception as e:
-                print(f"Error processing base64 image for student upload: {e}")
                 return jsonify({'error': f'Invalid image data: {str(e)}'}), 400
-
-        # Path B: traditional file upload under key 'photo'
         elif 'photo' in request.files:
             file = request.files['photo']
             if not file or file.filename == '':
                 return jsonify({'error': 'No photo selected'}), 400
-
             filename = secure_filename(f"student_{student_id}_{file.filename}")
             saved_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             os.makedirs(os.path.dirname(saved_filepath), exist_ok=True)
             file.save(saved_filepath)
-
-            # Load file to numpy array for encoding
             try:
                 image_array = face_recognition.load_image_file(saved_filepath)
             except Exception as e:
@@ -1032,31 +1237,24 @@ def upload_student_photo(student_id):
         else:
             return jsonify({'error': 'No photo or image data provided'}), 400
 
-        # Process face recognition using image_array
         try:
             face_encodings = face_recognition.face_encodings(image_array)
-
             if len(face_encodings) == 0:
                 if saved_filepath and os.path.exists(saved_filepath):
                     os.remove(saved_filepath)
-                return jsonify({'error': 'No face detected in the image. Please capture a clear photo with a single visible face.'}), 400
-
+                return jsonify({'error': 'No face detected in the image.'}), 400
             if len(face_encodings) > 1:
-                return jsonify({'error': 'Multiple faces detected. Please capture a photo with only one person.'}), 400
+                return jsonify({'error': 'Multiple faces detected. Provide a single face image.'}), 400
 
-            # Store face encoding and profile image filename
             face_encoding = face_encodings[0].tolist()
-            student.face_encodings = json.dumps([face_encoding])
-            if saved_filepath:
-                student.profile_image = os.path.basename(saved_filepath)
-
-            db.session.commit()
-
-            return jsonify({
-                'message': 'Photo captured and face registered successfully!',
-                'student': student.to_dict()
-            }), 200
-
+            updates = {
+                'face_encodings': [face_encoding],
+                'profile_image': os.path.basename(saved_filepath) if saved_filepath else student.get('profile_image'),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            mongo.db.students.update_one({'_id': student.get('_id')}, {'$set': updates})
+            newdoc = mongo.db.students.find_one({'_id': student.get('_id')})
+            return jsonify({'message': 'Photo captured and face registered successfully!', 'student': _mongo_student_to_dict(newdoc)}), 200
         except Exception as e:
             if saved_filepath and os.path.exists(saved_filepath):
                 os.remove(saved_filepath)
@@ -1132,81 +1330,68 @@ def recognize_faces_for_attendance():
                 return jsonify({'error': 'No faces detected in the image'}), 400
             
             # Get all students with face encodings
-            students_with_faces = Student.query.filter(
-                Student.face_encodings.isnot(None),
-                Student.face_encodings != '',
-                Student.is_active == True
-            ).all()
-            
+            recognized_students = []
+            if not mongo:
+                if temp_filepath and os.path.exists(temp_filepath):
+                    os.remove(temp_filepath)
+                return jsonify({'error': 'MongoDB not configured'}), 500
+
+            students_with_faces = list(mongo.db.students.find({'face_encodings': {'$exists': True, '$ne': []}, 'is_active': True}))
             if not students_with_faces:
                 if temp_filepath and os.path.exists(temp_filepath):
                     os.remove(temp_filepath)
                 return jsonify({'error': 'No registered student faces found'}), 400
-            
-            recognized_students = []
-            
-            # Compare each detected face with known faces
+
             for face_encoding in face_encodings:
                 best_match = None
                 best_distance = float('inf')
-                
-                for student in students_with_faces:
-                    try:
-                        stored_encodings = json.loads(student.face_encodings)
-                        for stored_encoding in stored_encodings:
-                            # Calculate face distance
-                            distance = face_recognition.face_distance([stored_encoding], face_encoding)[0]
-                            
-                            # Threshold for face recognition (lower = more strict)
-                            if distance < 0.6 and distance < best_distance:
-                                best_match = student
-                                best_distance = distance
-                    except (json.JSONDecodeError, TypeError):
-                        continue
-                
+                for sdoc in students_with_faces:
+                    stored_list = sdoc.get('face_encodings') or []
+                    for stored_encoding in stored_list:
+                        try:
+                            distance = face_recognition.face_distance([np.array(stored_encoding)], face_encoding)[0]
+                        except Exception:
+                            continue
+                        if distance < 0.6 and distance < best_distance:
+                            best_match = sdoc
+                            best_distance = distance
+
                 if best_match:
-                    confidence = max(0, 100 - (best_distance * 100))  # Convert to percentage
-                    
-                    # Check if attendance already marked today
-                    today = datetime.now().date()
-                    existing_attendance = AttendanceRecord.query.filter_by(
-                        student_id=best_match.id,
-                        date=today
-                    ).first()
-                    
+                    confidence = max(0, 100 - (best_distance * 100))
+                    today = datetime.now().date().isoformat()
+                    sid = str(best_match.get('_id'))
+                    existing_attendance = mongo.db.attendance_records.find_one({'student_id': sid, 'date': today})
                     if existing_attendance:
                         recognized_students.append({
-                            'student_id': best_match.id,
-                            'student_name': best_match.full_name,
-                            'roll_number': best_match.roll_number,
+                            'student_id': sid,
+                            'student_name': best_match.get('full_name'),
+                            'roll_number': best_match.get('roll_number'),
                             'confidence': round(confidence, 2),
                             'already_marked': True,
-                            'existing_status': existing_attendance.status,
-                            'existing_time': existing_attendance.time_in.strftime('%H:%M:%S') if existing_attendance.time_in else None
+                            'existing_status': existing_attendance.get('status'),
+                            'existing_time': existing_attendance.get('time_in')
                         })
                     else:
-                        # Mark new attendance
-                        attendance = AttendanceRecord(
-                            student_id=best_match.id,
-                            date=today,
-                            time_in=datetime.now().time(),
-                            status='present',
-                            confidence_score=confidence,
-                            marked_by='face_recognition',
-                            notes='Automatically marked via face recognition'
-                        )
-                        
-                        db.session.add(attendance)
-                        db.session.commit()
-                        
+                        attendance_doc = {
+                            'student_id': sid,
+                            'date': today,
+                            'time_in': datetime.now().strftime('%H:%M:%S'),
+                            'status': 'present',
+                            'confidence_score': confidence,
+                            'marked_by': 'face_recognition',
+                            'notes': 'Automatically marked via face recognition',
+                            'created_at': datetime.utcnow().isoformat()
+                        }
+                        res = mongo.db.attendance_records.insert_one(attendance_doc)
+                        attendance_doc['id'] = str(res.inserted_id)
                         recognized_students.append({
-                            'student_id': best_match.id,
-                            'student_name': best_match.full_name,
-                            'roll_number': best_match.roll_number,
+                            'student_id': sid,
+                            'student_name': best_match.get('full_name'),
+                            'roll_number': best_match.get('roll_number'),
                             'confidence': round(confidence, 2),
                             'already_marked': False,
                             'status': 'present',
-                            'time_marked': attendance.time_in.strftime('%H:%M:%S')
+                            'time_marked': attendance_doc.get('time_in')
                         })
             
             # Clean up temp file if it exists
@@ -1232,18 +1417,21 @@ def recognize_faces_for_attendance():
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
-@app.route('/api/students/<int:student_id>/photo', methods=['GET'])
+@app.route('/api/students/<student_id>/photo', methods=['GET'])
 def get_student_photo(student_id):
     """Get student profile photo"""
     try:
-        student = Student.query.get(student_id)
-        if not student or not student.profile_image:
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        try:
+            sdoc = mongo.db.students.find_one({'_id': ObjectId(student_id)}) if ObjectId.is_valid(student_id) else mongo.db.students.find_one({'_id': student_id})
+        except Exception:
+            return jsonify({'error': 'Invalid student id'}), 400
+        if not sdoc or not sdoc.get('profile_image'):
             return jsonify({'error': 'Photo not found'}), 404
-        
-        photo_path = os.path.join(app.config['UPLOAD_FOLDER'], student.profile_image)
+        photo_path = os.path.join(app.config['UPLOAD_FOLDER'], sdoc.get('profile_image'))
         if not os.path.exists(photo_path):
             return jsonify({'error': 'Photo file not found'}), 404
-        
         return send_file(photo_path)
     
     except Exception as e:
@@ -1343,96 +1531,131 @@ def _migrate_sqlite_roll_index():
             pass
         print(f"SQLite migration warning: {e}")
 
-@app.route('/api/attendance/<int:attendance_id>/status', methods=['PUT'])
+@app.route('/api/attendance/<attendance_id>/status', methods=['PUT'])
 def update_attendance_status(attendance_id):
     try:
         data = request.get_json(force=True)
         new_status = data.get('status')
         if new_status not in ['present', 'absent', 'late']:
             return jsonify({'error': 'Invalid status'}), 400
-        
-        record = AttendanceRecord.query.get(attendance_id)
-        if not record:
+        if not mongo:
+            return jsonify({'error': 'MongoDB not configured'}), 500
+        try:
+            aid = ObjectId(attendance_id) if ObjectId.is_valid(attendance_id) else attendance_id
+        except Exception:
+            aid = attendance_id
+        rec = mongo.db.attendance_records.find_one({'_id': aid}) if isinstance(aid, ObjectId) else mongo.db.attendance_records.find_one({'_id': aid})
+        if not rec:
             return jsonify({'error': 'Attendance record not found'}), 404
-            
-        record.status = new_status
-        record.updated_at = datetime.utcnow()
-        db.session.commit()
-        return jsonify({'message': 'Status updated', 'attendance': record.to_dict()}), 200
+        mongo.db.attendance_records.update_one({'_id': rec.get('_id')}, {'$set': {'status': new_status, 'updated_at': datetime.utcnow().isoformat()}})
+        rec_updated = mongo.db.attendance_records.find_one({'_id': rec.get('_id')})
+        rec_updated['id'] = str(rec_updated.get('_id'))
+        return jsonify({'message': 'Status updated', 'attendance': rec_updated}), 200
     except Exception as e:
-        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/classes', methods=['GET', 'POST'])
 def handle_classes():
+    if not mongo:
+        return jsonify({'error': 'MongoDB not configured'}), 500
     if request.method == 'GET':
-        classes = SchoolClass.query.all()
-        return jsonify({'classes': [c.to_dict() for c in classes]}), 200
+        docs = list(mongo.db.classes.find())
+        classes = []
+        for d in docs:
+            classes.append({'id': str(d.get('_id')), 'name': d.get('name'), 'section': d.get('section'), 'academic_year': d.get('academic_year')})
+        return jsonify({'classes': classes}), 200
     elif request.method == 'POST':
         data = request.get_json(force=True)
-        new_class = SchoolClass(
-            name=data.get('name'),
-            section=data.get('section'),
-            academic_year=data.get('academic_year')
-        )
-        db.session.add(new_class)
-        db.session.commit()
-        return jsonify({'message': 'Class created', 'class': new_class.to_dict()}), 201
+        doc = {'name': data.get('name'), 'section': data.get('section'), 'academic_year': data.get('academic_year'), 'created_at': datetime.utcnow().isoformat()}
+        res = mongo.db.classes.insert_one(doc)
+        doc['id'] = str(res.inserted_id)
+        return jsonify({'message': 'Class created', 'class': doc}), 201
 
-@app.route('/api/classes/<int:class_id>', methods=['PUT', 'DELETE'])
+@app.route('/api/classes/<class_id>', methods=['PUT', 'DELETE'])
 def manage_class(class_id):
-    school_class = SchoolClass.query.get(class_id)
-    if not school_class:
+    if not mongo:
+        return jsonify({'error': 'MongoDB not configured'}), 500
+    try:
+        cid = ObjectId(class_id) if ObjectId.is_valid(class_id) else class_id
+    except Exception:
+        cid = class_id
+    doc = mongo.db.classes.find_one({'_id': cid}) if isinstance(cid, ObjectId) else mongo.db.classes.find_one({'_id': cid})
+    if not doc:
         return jsonify({'error': 'Class not found'}), 404
-        
     if request.method == 'DELETE':
-        # optionally update users
-        User.query.filter_by(class_id=class_id).update({'class_id': None})
-        db.session.delete(school_class)
-        db.session.commit()
+        mongo.db.users.update_many({'class_id': str(doc.get('_id'))}, {'$set': {'class_id': None}})
+        mongo.db.classes.delete_one({'_id': doc.get('_id')})
         return jsonify({'message': 'Class deleted'}), 200
     elif request.method == 'PUT':
         data = request.get_json(force=True)
-        school_class.name = data.get('name', school_class.name)
-        school_class.section = data.get('section', school_class.section)
-        school_class.academic_year = data.get('academic_year', school_class.academic_year)
-        db.session.commit()
-        return jsonify({'message': 'Class updated', 'class': school_class.to_dict()}), 200
+        updates = {
+            'name': data.get('name', doc.get('name')),
+            'section': data.get('section', doc.get('section')),
+            'academic_year': data.get('academic_year', doc.get('academic_year')),
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        mongo.db.classes.update_one({'_id': doc.get('_id')}, {'$set': updates})
+        newdoc = mongo.db.classes.find_one({'_id': doc.get('_id')})
+        newdoc['id'] = str(newdoc.get('_id'))
+        return jsonify({'message': 'Class updated', 'class': newdoc}), 200
 
 @app.route('/api/admin/teachers', methods=['GET', 'POST'])
 def handle_teachers():
+    if not mongo:
+        return jsonify({'error': 'MongoDB not configured'}), 500
     if request.method == 'GET':
-        teachers = User.query.filter_by(role='teacher').all()
-        return jsonify({'teachers': [t.to_dict() for t in teachers]}), 200
+        docs = list(mongo.db.users.find({'role': 'teacher'}))
+        teachers = [ _mongo_user_to_dict(d) for d in docs ]
+        return jsonify({'teachers': teachers}), 200
     elif request.method == 'POST':
         data = request.get_json(force=True)
         from werkzeug.security import generate_password_hash
-        new_teacher = User(
-            username=data.get('username'),
-            email=data.get('email'),
-            full_name=data.get('full_name'),
-            role='teacher',
-            password_hash=generate_password_hash(data.get('password')),
-            class_id=data.get('class_id')
-        )
-        db.session.add(new_teacher)
-        db.session.commit()
-        return jsonify({'message': 'Teacher created', 'teacher': new_teacher.to_dict()}), 201
+        doc = {
+            'username': data.get('username'),
+            'email': data.get('email'),
+            'full_name': data.get('full_name'),
+            'role': 'teacher',
+            'password_hash': generate_password_hash(data.get('password')),
+            'class_id': data.get('class_id'),
+            'is_active': True,
+            'created_at': datetime.utcnow().isoformat()
+        }
+        res = mongo.db.users.insert_one(doc)
+        doc['_id'] = res.inserted_id
+        return jsonify({'message': 'Teacher created', 'teacher': _mongo_user_to_dict(doc)}), 201
 
-@app.route('/api/admin/teachers/<int:teacher_id>', methods=['PUT', 'DELETE'])
+@app.route('/api/admin/teachers/<teacher_id>', methods=['PUT', 'DELETE'])
 def manage_teacher(teacher_id):
-    teacher = User.query.filter_by(id=teacher_id, role='teacher').first()
+    if not mongo:
+        return jsonify({'error': 'MongoDB not configured'}), 500
+    try:
+        tid = ObjectId(teacher_id) if ObjectId.is_valid(teacher_id) else teacher_id
+    except Exception:
+        tid = teacher_id
+    teacher = mongo.db.users.find_one({'_id': tid, 'role': 'teacher'}) if isinstance(tid, ObjectId) else mongo.db.users.find_one({'_id': tid, 'role': 'teacher'})
     if not teacher:
         return jsonify({'error': 'Teacher not found'}), 404
-        
     if request.method == 'DELETE':
-        db.session.delete(teacher)
-        db.session.commit()
+        mongo.db.users.delete_one({'_id': teacher.get('_id')})
         return jsonify({'message': 'Teacher deleted'}), 200
     elif request.method == 'PUT':
         data = request.get_json(force=True)
+        from werkzeug.security import generate_password_hash
+        updates = {}
         if 'full_name' in data:
-            teacher.full_name = data['full_name']
+            updates['full_name'] = data['full_name']
+        if 'email' in data:
+            updates['email'] = data['email']
+        if 'is_active' in data:
+            updates['is_active'] = data['is_active']
+        if 'class_id' in data:
+            updates['class_id'] = data['class_id'] if data['class_id'] != '' else None
+        if data.get('password'):
+            updates['password_hash'] = generate_password_hash(data['password'])
+        if updates:
+            mongo.db.users.update_one({'_id': teacher.get('_id')}, {'$set': updates})
+        newt = mongo.db.users.find_one({'_id': teacher.get('_id')})
+        return jsonify({'message': 'Teacher updated', 'teacher': _mongo_user_to_dict(newt)}), 200
         if 'email' in data:
             teacher.email = data['email']
         if 'is_active' in data:
@@ -1448,8 +1671,9 @@ def manage_teacher(teacher_id):
 try:
     # Import and create all tables
     with app.app_context():
-        db.create_all()
-        _migrate_sqlite_roll_index()
+        if db is not None:
+            db.create_all()
+            _migrate_sqlite_roll_index()
     print("OK Database tables created successfully")
     
     print("OK Successfully started Flask application")
@@ -1459,5 +1683,6 @@ except Exception as e:
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        if db is not None:
+            db.create_all()
     app.run(debug=True, host='0.0.0.0', port=5000)

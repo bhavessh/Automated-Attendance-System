@@ -4,9 +4,10 @@ import numpy as np
 import os
 from PIL import Image
 import json
-from app.models import Student
-from app import db
+from app import mongo, USE_MONGO
+from bson.objectid import ObjectId
 import logging
+from datetime import datetime
 
 class FaceRecognitionService:
     """Service for handling face recognition operations"""
@@ -21,26 +22,31 @@ class FaceRecognitionService:
     def load_known_faces(self):
         """Load all registered student faces from database"""
         try:
-            students = Student.query.filter_by(is_active=True).all()
             self.known_face_encodings = []
             self.known_face_names = []
             self.known_student_ids = []
-            
+
+            # Load from MongoDB (pure-Mongo mode)
+            students = list(mongo.db.students.find({'is_active': True}))
             for student in students:
-                encodings = student.get_face_encodings()
-                for encoding in encodings:
+                encs = student.get('face_encodings') or []
+                for encoding in encs:
                     self.known_face_encodings.append(np.array(encoding))
-                    self.known_face_names.append(student.full_name)
-                    self.known_student_ids.append(student.id)
-            
-            logging.info(f"Loaded {len(self.known_face_encodings)} face encodings for {len(students)} students")
+                    self.known_face_names.append(student.get('full_name'))
+                    self.known_student_ids.append(str(student.get('_id')))
+            logging.info(f"Loaded {len(self.known_face_encodings)} face encodings for {len(students)} students (mongo)")
         except Exception as e:
             logging.error(f"Error loading known faces: {str(e)}")
     
     def register_student_faces(self, student_id, image_paths):
         """Register face encodings for a student"""
         try:
-            student = Student.query.get(student_id)
+            # Find student in MongoDB
+            try:
+                sid = ObjectId(student_id) if ObjectId.is_valid(student_id) else student_id
+            except Exception:
+                sid = student_id
+            student = mongo.db.students.find_one({'_id': sid}) if isinstance(sid, ObjectId) else mongo.db.students.find_one({'_id': sid})
             if not student:
                 return False, "Student not found"
             
@@ -66,13 +72,14 @@ class FaceRecognitionService:
                 return False, "No valid faces found in provided images"
             
             # Store encodings in database
-            student.set_face_encodings(encodings)
-            db.session.commit()
-            
+            sid = student.get('_id')
+            mongo.db.students.update_one({'_id': sid}, {'$set': {'face_encodings': encodings, 'updated_at': datetime.utcnow().isoformat()}})
+
             # Reload known faces
             self.load_known_faces()
-            
-            return True, f"Registered {len(encodings)} face encodings for {student.full_name}"
+
+            name = student.get('full_name') if isinstance(student, dict) else student.full_name
+            return True, f"Registered {len(encodings)} face encodings for {name}"
         
         except Exception as e:
             logging.error(f"Error registering student faces: {str(e)}")
@@ -107,7 +114,7 @@ class FaceRecognitionService:
                         student_id = self.known_student_ids[best_match_index]
                         student_name = self.known_face_names[best_match_index]
                         confidence = 1 - face_distances[best_match_index]
-                        
+
                         recognized_faces.append({
                             'student_id': student_id,
                             'student_name': student_name,
@@ -195,7 +202,11 @@ class FaceRecognitionService:
     def update_student_encoding(self, student_id, new_image_path):
         """Update face encoding for existing student"""
         try:
-            student = Student.query.get(student_id)
+            try:
+                sid = ObjectId(student_id) if ObjectId.is_valid(student_id) else student_id
+            except Exception:
+                sid = student_id
+            student = mongo.db.students.find_one({'_id': sid}) if isinstance(sid, ObjectId) else mongo.db.students.find_one({'_id': sid})
             if not student:
                 return False, "Student not found"
             
@@ -205,7 +216,7 @@ class FaceRecognitionService:
                 return False, message
             
             # Get existing encodings
-            existing_encodings = student.get_face_encodings()
+            existing_encodings = student.get('face_encodings') or []
             
             # Add new encoding
             image = face_recognition.load_image_file(new_image_path)
@@ -218,13 +229,14 @@ class FaceRecognitionService:
                 if len(existing_encodings) > 5:
                     existing_encodings = existing_encodings[-5:]
                 
-                student.set_face_encodings(existing_encodings)
-                db.session.commit()
-                
+                sid = student.get('_id')
+                mongo.db.students.update_one({'_id': sid}, {'$set': {'face_encodings': existing_encodings, 'updated_at': datetime.utcnow().isoformat()}})
+
                 # Reload known faces
                 self.load_known_faces()
-                
-                return True, f"Updated face encoding for {student.full_name}"
+
+                name = student.get('full_name') if isinstance(student, dict) else student.full_name
+                return True, f"Updated face encoding for {name}"
             else:
                 return False, "Could not extract face encoding from image"
         

@@ -36,6 +36,10 @@ python-dateutil==2.8.2
 pytz==2023.3
 schedule==1.2.0
 
+# MongoDB support (optional)
+pymongo==4.7.2
+flask-pymongo==2.3.0
+
 # Development & Testing
 pytest==7.4.2
 pytest-flask==1.1.0

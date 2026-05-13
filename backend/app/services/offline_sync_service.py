@@ -3,8 +3,8 @@ import json
 import os
 import logging
 import sqlite3
-from app.models import AttendanceRecord, Student, User
-from app import db
+from app import mongo
+from bson.objectid import ObjectId
 
 class OfflineSyncService:
     """Service for handling offline data synchronization"""
@@ -98,35 +98,46 @@ class OfflineSyncService:
     def cache_students_data(self):
         """Cache students data for offline use"""
         try:
-            students = Student.query.filter_by(is_active=True).all()
-            
+            if not mongo:
+                return False, 'MongoDB not configured'
+            students = list(mongo.db.students.find({'is_active': True}))
+
             conn = sqlite3.connect(self.offline_db_path)
             cursor = conn.cursor()
-            
+
             # Clear existing cache
             cursor.execute('DELETE FROM offline_students')
-            
+
             # Insert current students data
+            count = 0
             for student in students:
+                sid = str(student.get('_id'))
+                roll = student.get('roll_number')
+                full = student.get('full_name')
+                class_name = student.get('class_name')
+                section = student.get('section')
+                enc = json.dumps(student.get('face_encodings') or [])
+
                 cursor.execute('''
                     INSERT INTO offline_students 
                     (id, roll_number, full_name, class_name, section, face_encodings, last_updated)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    student.id,
-                    student.roll_number,
-                    student.full_name,
-                    student.class_name,
-                    student.section,
-                    student.face_encodings,
+                    sid,
+                    roll,
+                    full,
+                    class_name,
+                    section,
+                    enc,
                     datetime.now().isoformat()
                 ))
-            
+                count += 1
+
             conn.commit()
             conn.close()
-            
-            logging.info(f"Cached {len(students)} students for offline use")
-            return True, f"Cached {len(students)} students"
+
+            logging.info(f"Cached {count} students for offline use")
+            return True, f"Cached {count} students"
         
         except Exception as e:
             logging.error(f"Error caching students data: {str(e)}")
@@ -176,28 +187,36 @@ class OfflineSyncService:
             
             for record in offline_records:
                 try:
-                    # Create attendance record in main database
-                    attendance = AttendanceRecord(
-                        student_id=record[1],
-                        date=datetime.fromisoformat(record[2]).date(),
-                        time_in=datetime.fromisoformat(record[3]).time() if record[3] else None,
-                        status=record[4],
-                        confidence_score=record[5],
-                        marked_by=record[6],
-                        notes=record[7],
-                        created_at=datetime.fromisoformat(record[8])
-                    )
-                    
-                    db.session.add(attendance)
-                    db.session.commit()
-                    
+                    # Create attendance record in main database (Mongo or SQL)
+                    student_id = record[1]
+                    date_str = record[2]
+                    time_in = record[3]
+                    status = record[4]
+                    confidence = record[5]
+                    marked_by = record[6]
+                    notes = record[7]
+                    created_at = record[8]
+
+                    # store student_id as string in MongoDB
+                    doc = {
+                        'student_id': str(student_id),
+                        'date': date_str,
+                        'time_in': time_in,
+                        'time_out': None,
+                        'status': status,
+                        'confidence_score': confidence,
+                        'marked_by': marked_by,
+                        'notes': notes,
+                        'created_at': created_at
+                    }
+                    mongo.db.attendance_records.insert_one(doc)
+
                     # Mark as synced in offline database
                     cursor.execute('UPDATE offline_attendance SET synced = 1 WHERE id = ?', (record[0],))
                     synced_count += 1
                 
                 except Exception as e:
                     errors.append(f"Record {record[0]}: {str(e)}")
-                    db.session.rollback()
             
             conn.commit()
             conn.close()
@@ -276,9 +295,14 @@ class OfflineSyncService:
     def is_online(self):
         """Check if system is online (simple connectivity test)"""
         try:
-            # Try to query database
-            db.session.execute('SELECT 1')
-            return True
+            # Ping MongoDB
+            if not mongo:
+                return False
+            try:
+                mongo.db.command('ping')
+                return True
+            except Exception:
+                return False
         except Exception:
             return False
     
